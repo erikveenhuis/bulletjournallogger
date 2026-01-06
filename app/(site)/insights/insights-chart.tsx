@@ -22,7 +22,7 @@ type AnswerRow = {
   scale_value: number | null;
   number_value: number | null;
   bool_value?: boolean | null;
-  template?: { id?: string; title?: string; type?: string | null } | null;
+  question_templates?: { id?: string; title?: string; type?: string | null } | null;
 };
 
 type QuestionSeries = {
@@ -38,7 +38,7 @@ const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 function toQuestionSeries(answers: AnswerRow[]): QuestionSeries[] {
   return Object.values(
     answers.reduce<Record<string, QuestionSeries>>((acc, row) => {
-      const type = (row.template?.type as QuestionSeries["type"]) || "other";
+      const type = (row.question_templates?.type as QuestionSeries["type"]) || "other";
       const value =
         type === "boolean"
           ? row.bool_value === null || row.bool_value === undefined
@@ -55,7 +55,7 @@ function toQuestionSeries(answers: AnswerRow[]): QuestionSeries[] {
       if (value === null || value === undefined) return acc;
 
       const id = row.template_id || row.prompt_snapshot || "unknown-question";
-      const label = row.prompt_snapshot || row.template?.title || "Untitled question";
+      const label = row.prompt_snapshot || row.question_templates?.title || "Untitled question";
       const typeLabel =
         type === "scale"
           ? "Scale"

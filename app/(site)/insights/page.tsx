@@ -21,7 +21,7 @@ export default async function InsightsPage() {
   const { data: answers } = await supabase
     .from("answers")
     .select(
-      "question_date, template_id, prompt_snapshot, scale_value, number_value, bool_value, template:question_templates(id,title,type)",
+      "question_date, template_id, prompt_snapshot, scale_value, number_value, bool_value, question_templates(id,title,type)",
     )
     .eq("user_id", user.id)
     .order("question_date", { ascending: true });
