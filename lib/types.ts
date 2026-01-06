@@ -15,6 +15,9 @@ export type QuestionTemplate = {
   type: QuestionType;
   meta: Record<string, unknown> | null;
   is_active: boolean | null;
+  categories?: {
+    name: string;
+  } | null;
 };
 
 export type UserQuestion = {
