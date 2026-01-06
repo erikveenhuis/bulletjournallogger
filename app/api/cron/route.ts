@@ -22,7 +22,10 @@ export async function POST(request: Request) {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("push_subscriptions")
-    .select("endpoint,p256dh,auth,user_id,profiles(timezone,reminder_time,push_opt_in)")
+    // Explicitly join on the FK to ensure profile fields are returned and filtered.
+    .select(
+      "endpoint,p256dh,auth,user_id,profiles:profiles!push_subscriptions_user_id_fkey(timezone,reminder_time,push_opt_in)",
+    )
     .eq("profiles.push_opt_in", true);
 
   if (error) {
@@ -30,26 +33,45 @@ export async function POST(request: Request) {
   }
 
   const nowUtc = new Date();
+  type ProfileRow = { timezone: string | null; reminder_time: string | null; push_opt_in?: boolean | null };
   type SubscriptionRow = {
     endpoint: string;
     p256dh: string;
     auth: string;
-    profiles: { timezone: string | null; reminder_time: string | null; push_opt_in?: boolean | null }[] | null;
+    profiles: ProfileRow | ProfileRow[] | null;
   };
 
   const rows = (data ?? []) as SubscriptionRow[];
   const due = rows.filter((row) => {
-    const profile = row.profiles?.[0];
+    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
     const tz = profile?.timezone || "UTC";
     const reminder = profile?.reminder_time;
     if (!reminder) return false;
-    const local = new Intl.DateTimeFormat("en-US", {
+    const parts = new Intl.DateTimeFormat("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
       timeZone: tz,
-    }).format(nowUtc);
-    return local === reminder.slice(0, 5);
+    })
+      .formatToParts(nowUtc)
+      .reduce<Record<string, string>>((acc, part) => {
+        if (part.type === "hour" || part.type === "minute") acc[part.type] = part.value;
+        return acc;
+      }, {});
+
+    const hour = Number(parts.hour ?? "0");
+    const minute = Number(parts.minute ?? "0");
+    const [remHourStr, remMinuteStr] = reminder.split(":");
+    const remHour = Number(remHourStr);
+    const remMinute = Number(remMinuteStr);
+    if (Number.isNaN(remHour) || Number.isNaN(remMinute)) return false;
+
+    const localMinutes = hour * 60 + minute;
+    const reminderMinutes = remHour * 60 + remMinute;
+    const diff = localMinutes - reminderMinutes;
+    // Treat a 5-minute window as "due" to avoid missing reminders when the cron
+    // tick is slightly late.
+    return diff >= 0 && diff < 5;
   });
 
   const results = [];
