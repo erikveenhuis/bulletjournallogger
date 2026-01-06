@@ -16,12 +16,19 @@ import { addDays, format, startOfWeek, subWeeks } from "date-fns";
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, ChartLegend);
 
 type AnswerRow = {
-  question_date: string;
+  id: string;
+  user_id: string;
   template_id: string;
+  question_date: string;
   prompt_snapshot: string | null;
-  scale_value: number | null;
+  category_snapshot: string | null;
+  bool_value: boolean | null;
   number_value: number | null;
-  bool_value?: boolean | null;
+  scale_value: number | null;
+  emoji_value: string | null;
+  text_value: string | null;
+  created_at: string;
+  updated_at: string;
   question_templates?: { id?: string; title?: string; type?: string | null } | null;
 };
 
