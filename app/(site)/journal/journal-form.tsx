@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import {
   addDays,
   addMonths,
@@ -312,11 +312,11 @@ export default function JournalForm({ date, userQuestions }: Props) {
   const calendarStart = startOfWeek(monthStart);
   const calendarEnd = endOfWeek(monthEnd);
 
-  const weeks: JSX.Element[] = [];
+  const weeks: ReactElement[] = [];
   let day = calendarStart;
   let weekIndex = 0;
   while (day <= calendarEnd) {
-    const days: JSX.Element[] = [];
+    const days: ReactElement[] = [];
     for (let i = 0; i < 7; i += 1) {
       const cellDate = day;
       const dayString = format(cellDate, "yyyy-MM-dd");
@@ -440,6 +440,8 @@ export default function JournalForm({ date, userQuestions }: Props) {
         {validUserQuestions.map((uq) => {
           const t = uq.template;
           const status = getStatusMeta(uq.template_id);
+        const numericValue = values[uq.template_id];
+        const numberInputValue = typeof numericValue === "number" ? numericValue : "";
           return (
             <div key={uq.id} className="bujo-question space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -487,7 +489,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
                 <input
                   type="number"
                   className="bujo-input"
-                  value={values[uq.template_id] ?? ""}
+                  value={numberInputValue}
                   onChange={(e) => {
                     const raw = e.target.value;
                     setValue(uq.template_id, raw === "" ? null : Number(raw));

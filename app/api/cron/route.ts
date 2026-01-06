@@ -34,12 +34,14 @@ export async function POST(request: Request) {
     endpoint: string;
     p256dh: string;
     auth: string;
-    profiles: { timezone: string | null; reminder_time: string | null } | null;
+    profiles: { timezone: string | null; reminder_time: string | null; push_opt_in?: boolean | null }[] | null;
   };
 
-  const due = (data || []).filter((row: SubscriptionRow) => {
-    const tz = row.profiles?.timezone || "UTC";
-    const reminder = row.profiles?.reminder_time;
+  const rows = (data ?? []) as SubscriptionRow[];
+  const due = rows.filter((row) => {
+    const profile = row.profiles?.[0];
+    const tz = profile?.timezone || "UTC";
+    const reminder = profile?.reminder_time;
     if (!reminder) return false;
     const local = new Intl.DateTimeFormat("en-US", {
       hour: "2-digit",
