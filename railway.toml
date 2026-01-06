@@ -7,4 +7,6 @@ healthcheckPath = "/"
 
 [build.env]
 NODE_ENV = "production"
-NIXPACKS_NODE_VERSION = "20"
+
+[build.nixpacksPlan.phases.setup]
+nixPkgs = ["nodejs_20", "npm"]
