@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type ProfileFormProps = {
@@ -27,13 +27,36 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+function normalizeToFiveMinutes(value?: string | null) {
+  if (!value) return "09:00";
+  const [hourPart = "0", minutePart = "0"] = value.split(":");
+  const hours = Number.parseInt(hourPart, 10);
+  const minutes = Number.parseInt(minutePart, 10);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return "09:00";
+  const totalMinutes = Math.min(Math.max(hours * 60 + minutes, 0), 23 * 60 + 59);
+  const rounded = Math.floor(totalMinutes / 5) * 5; // enforce 5-minute increments
+  const hh = String(Math.floor(rounded / 60)).padStart(2, "0");
+  const mm = String(rounded % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
 export default function ProfileForm({
   profile,
   timezoneOptions,
 }: ProfileFormProps) {
   const [timezone, setTimezone] = useState(profile?.timezone || "UTC");
-  const [reminderTime, setReminderTime] = useState(
-    profile?.reminder_time?.slice(0, 5) || "09:00",
+  const [reminderTime, setReminderTime] = useState(() =>
+    normalizeToFiveMinutes(profile?.reminder_time || "09:00"),
+  );
+  const timeOptions = useMemo(
+    () =>
+      Array.from({ length: (24 * 60) / 5 }, (_, idx) => {
+        const totalMinutes = idx * 5;
+        const hh = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+        const mm = String(totalMinutes % 60).padStart(2, "0");
+        return `${hh}:${mm}`;
+      }),
+    [],
   );
   const [pushOptIn, setPushOptIn] = useState(!!profile?.push_opt_in);
   const [saving, setSaving] = useState(false);
@@ -238,16 +261,21 @@ export default function ProfileForm({
         </div>
         <div className="space-y-1">
           <label className="text-sm font-medium text-gray-800">Reminder time</label>
-          <input
-            type="time"
+          <select
             value={reminderTime}
             onChange={(e) => {
-              const nextTime = e.target.value;
+              const nextTime = normalizeToFiveMinutes(e.target.value);
               setReminderTime(nextTime);
               saveProfile({ reminderTime: nextTime });
             }}
             className="bujo-input"
-          />
+          >
+            {timeOptions.map((time) => (
+              <option key={time} value={time}>
+                {time}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-800">Push reminders</label>
