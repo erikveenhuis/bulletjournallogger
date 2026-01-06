@@ -1,10 +1,10 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import AdminForms from "./questions-client";
+import CategoriesClient from "./categories-client";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminQuestionsPage() {
+export default async function AdminCategoriesPage() {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -32,29 +32,20 @@ export default async function AdminQuestionsPage() {
     );
   }
 
-  const { data: categories } = await supabase
-    .from("categories")
-    .select("*")
-    .order("name");
-
-  const { data: templates } = await supabase
-    .from("question_templates")
-    .select("*, categories(name)")
-    .order("title");
+  const { data: categories } = await supabase.from("categories").select("*").order("name");
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Admin: questions</h1>
-          <p className="text-sm text-gray-600">Manage question templates.</p>
+          <h1 className="text-2xl font-semibold text-gray-900">Admin: categories</h1>
+          <p className="text-sm text-gray-600">Create, edit, or remove categories.</p>
         </div>
         <Link href="/admin" className="bujo-btn-secondary text-sm">
           Back to admin
         </Link>
       </div>
-
-      <AdminForms categories={categories || []} templates={templates || []} />
+      <CategoriesClient categories={categories || []} />
     </div>
   );
 }

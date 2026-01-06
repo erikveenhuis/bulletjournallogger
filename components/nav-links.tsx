@@ -11,7 +11,7 @@ const links = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/journal", label: "Journal" },
   { href: "/insights", label: "Insights" },
-  { href: "/admin/questions", label: "Admin", adminOnly: true },
+  { href: "/admin", label: "Admin", adminOnly: true },
 ];
 
 export default function NavLinks({ showAdmin }: NavLinksProps) {

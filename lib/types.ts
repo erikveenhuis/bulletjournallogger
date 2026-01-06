@@ -36,3 +36,26 @@ export type Category = {
   name: string;
   description: string | null;
 };
+
+export type PushSubscription = {
+  id: string;
+  user_id: string;
+  endpoint: string;
+  p256dh?: string;
+  auth?: string;
+  ua: string | null;
+  created_at: string;
+  // Supabase may return the related profile either as an object or array depending on join syntax.
+  profiles?:
+    | {
+        timezone: string | null;
+        reminder_time: string | null;
+        push_opt_in: boolean | null;
+      }
+    | {
+        timezone: string | null;
+        reminder_time: string | null;
+        push_opt_in: boolean | null;
+      }[]
+    | null;
+};

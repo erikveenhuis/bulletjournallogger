@@ -1,10 +1,12 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import AdminForms from "./questions-client";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import NotificationsClient from "./notifications-client";
+import type { PushSubscription } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminQuestionsPage() {
+export default async function AdminNotificationsPage() {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -32,29 +34,29 @@ export default async function AdminQuestionsPage() {
     );
   }
 
-  const { data: categories } = await supabase
-    .from("categories")
-    .select("*")
-    .order("name");
-
-  const { data: templates } = await supabase
-    .from("question_templates")
-    .select("*, categories(name)")
-    .order("title");
+  const adminClient = createAdminClient();
+  const { data: subscriptions } = await adminClient
+    .from("push_subscriptions")
+    // Explicitly join on the FK to ensure profile fields are returned.
+    .select(
+      "id,user_id,endpoint,ua,created_at,profiles:profiles!push_subscriptions_user_id_fkey(timezone,reminder_time,push_opt_in)",
+    )
+    .order("created_at", { ascending: false })
+    .limit(500);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Admin: questions</h1>
-          <p className="text-sm text-gray-600">Manage question templates.</p>
+          <h1 className="text-2xl font-semibold text-gray-900">Admin: notifications</h1>
+          <p className="text-sm text-gray-600">View and prune push subscription entries.</p>
         </div>
         <Link href="/admin" className="bujo-btn-secondary text-sm">
           Back to admin
         </Link>
       </div>
 
-      <AdminForms categories={categories || []} templates={templates || []} />
+      <NotificationsClient subscriptions={(subscriptions || []) as PushSubscription[]} />
     </div>
   );
 }
