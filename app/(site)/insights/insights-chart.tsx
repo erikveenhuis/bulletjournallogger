@@ -445,7 +445,7 @@ function DayValueModal({
                 max={10}
                 step={1}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
-                value={value ?? ""}
+                value={typeof value === "number" ? value : ""}
                 onChange={(e) => {
                   const next = e.target.value === "" ? null : Number(e.target.value);
                   setValue(Number.isNaN(next) ? null : next);
