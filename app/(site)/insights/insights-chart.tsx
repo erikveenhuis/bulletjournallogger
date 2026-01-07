@@ -380,10 +380,10 @@ function QuestionCalendar({
               !isFuture && isSolid && hasValue
                 ? bg
                 : undefined;
-            const gradientLayer =
-              !isFuture && !isBrush && !isSolid && hasValue
-                ? `linear-gradient(135deg, ${bg} 0%, ${palette.scaleHigh} 100%)`
-                : undefined;
+            const shouldUseGradient = !isFuture && !isBrush && !isSolid && hasValue && series.type !== "boolean";
+            const gradientLayer = shouldUseGradient
+              ? `linear-gradient(135deg, ${bg} 0%, ${palette.scaleHigh} 100%)`
+              : undefined;
             const title =
               value !== undefined
                 ? series.type === "boolean"
