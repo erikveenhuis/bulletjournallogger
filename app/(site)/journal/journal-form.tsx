@@ -378,7 +378,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
   }
 
   return (
-    <section className="bujo-card bujo-ruled">
+    <section className="bujo-card bujo-torn">
       <div className="space-y-4">
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -439,14 +439,19 @@ export default function JournalForm({ date, userQuestions }: Props) {
         </div>
         {validUserQuestions.map((uq) => {
           const t = uq.template;
+          const prompt = uq.custom_label || t.title;
+          const isWaterQuestion = (t.title ?? "").trim().toLowerCase() === "how many cups of water?";
           const status = getStatusMeta(uq.template_id);
         const numericValue = values[uq.template_id];
         const numberInputValue = typeof numericValue === "number" ? numericValue : "";
+          const questionClassName = isWaterQuestion
+            ? "doodle-border space-y-3 bg-[var(--bujo-paper)] p-4"
+            : "bujo-question space-y-3";
           return (
-            <div key={uq.id} className="bujo-question space-y-3">
+            <div key={uq.id} className={questionClassName}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-gray-900">
-                  {uq.custom_label || t.title}
+                  {prompt}
                 </p>
                 <div className="flex flex-wrap gap-2 text-xs">
                   <span
@@ -488,7 +493,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
               {t.type === "number" && (
                 <input
                   type="number"
-                  className="bujo-input"
+                  className={isWaterQuestion ? "w-full px-3 py-2" : "bujo-input"}
                   value={numberInputValue}
                   onChange={(e) => {
                     const raw = e.target.value;

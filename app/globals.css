@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "doodle.css/doodle.css";
 
 :root {
   --background: #faf5e9;
@@ -26,8 +27,20 @@ body {
   background-image: radial-gradient(var(--bujo-grid) 1px, transparent 0);
   background-size: 22px 22px;
   color: var(--foreground);
-  font-family: var(--font-geist-sans), "Inter", system-ui, -apple-system, sans-serif;
+  font-family: "Short Stack", var(--font-geist-sans), "Inter", system-ui,
+    -apple-system, sans-serif;
   line-height: 1.6;
+}
+
+body.doodle {
+  font-family: "Short Stack", var(--font-geist-sans), "Inter", system-ui,
+    -apple-system, sans-serif;
+}
+
+.font-semibold {
+  font-family: "Short Stack", var(--font-geist-sans), "Inter", system-ui,
+    -apple-system, sans-serif;
+  font-weight: 700;
 }
 
 h1,
@@ -54,9 +67,9 @@ a:hover {
   position: sticky;
   top: 0;
   z-index: 30;
-  background: rgba(250, 245, 233, 0.94);
-  border-bottom: 2px dashed var(--bujo-border);
-  box-shadow: 0 10px 0 var(--bujo-shadow);
+  background: rgba(246, 240, 255, 0.94);
+  border-bottom: 2px dashed #d9ccff;
+  box-shadow: 0 10px 0 #c4b5fd;
   backdrop-filter: blur(6px);
 }
 
@@ -65,10 +78,11 @@ a:hover {
   align-items: center;
   gap: 0.4rem;
   padding: 0.35rem 0.75rem;
-  border: 1.5px solid var(--bujo-border);
+  border: 1.5px solid #d9ccff;
   border-radius: 999px;
-  background: var(--bujo-paper);
-  box-shadow: 0 4px 0 var(--bujo-shadow);
+  background: #f9f5ff;
+  box-shadow: 0 4px 0 #c4b5fd;
+  color: #3b2f64;
   font-weight: 700;
   letter-spacing: 0.03em;
   text-decoration: none;
@@ -83,16 +97,16 @@ a:hover {
 
 .bujo-nav__link--active,
 .bujo-nav a[aria-current="page"] {
-  border-color: var(--bujo-border);
-  background: #f8efdd;
-  box-shadow: inset 0 -3px 0 var(--bujo-accent-ink);
+  border-color: #d9ccff;
+  background: #f0e9ff;
+  box-shadow: inset 0 -3px 0 #7c6ad6;
   text-decoration: none;
   font-weight: 700;
 }
 
 .bujo-nav a:hover {
-  border-color: var(--bujo-border);
-  background: #f8efdd;
+  border-color: #d9ccff;
+  background: #f5edff;
   text-decoration: none;
 }
 
@@ -143,7 +157,8 @@ a:hover {
   box-shadow: 0 12px 0 var(--bujo-shadow), 0 18px 26px rgba(0, 0, 0, 0.06);
 }
 
-.bujo-card--solid.bujo-ruled {
+.bujo-card--solid.bujo-ruled,
+.bujo-card--solid.bujo-torn {
   background: #fff9ef;
   background-image: none;
 }
@@ -156,17 +171,62 @@ a:hover {
   box-shadow: 0 8px 0 var(--bujo-shadow);
 }
 
+.bujo-ruled,
+.bujo-torn {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: #fffaf1;
+}
+
 .bujo-ruled {
   background-image:
-    linear-gradient(
-      180deg,
-      transparent 24px,
-      rgba(214, 197, 170, 0.7) 25px,
-      rgba(214, 197, 170, 0.7) 26px,
-      transparent 27px
-    ),
-    linear-gradient(180deg, #fffcf4 0%, #fffcf4 100%);
-  background-size: 100% 32px, auto;
+    radial-gradient(var(--bujo-grid) 0.9px, transparent 0),
+    linear-gradient(180deg, #fffaf1 0%, #fff2df 100%);
+  background-size: 22px 22px, auto;
+}
+
+.bujo-torn {
+  background-image: linear-gradient(180deg, #fffaf1 0%, #fff2df 100%);
+  background-size: auto;
+}
+
+.bujo-ruled > *,
+.bujo-torn > * {
+  position: relative;
+  z-index: 2;
+}
+
+.bujo-ruled::before,
+.bujo-ruled::after,
+.bujo-torn::before,
+.bujo-torn::after {
+  content: "";
+  position: absolute;
+  left: -6px;
+  width: calc(100% + 12px);
+  height: 26px;
+  background:
+    radial-gradient(circle at 14px 16px, rgba(0, 0, 0, 0.08) 0 12px, transparent 13px 26px),
+    radial-gradient(circle at 44px 10px, rgba(0, 0, 0, 0.07) 0 11px, transparent 12px 26px);
+  background-size: 58px 26px;
+  background-repeat: repeat-x;
+  opacity: 0.78;
+  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.06));
+  pointer-events: none;
+  z-index: 1;
+}
+
+.bujo-ruled::before,
+.bujo-torn::before {
+  top: -18px;
+  transform: rotate(-0.8deg);
+}
+
+.bujo-ruled::after,
+.bujo-torn::after {
+  bottom: -18px;
+  transform: rotate(0.9deg) scaleX(-1);
 }
 
 .bujo-section-title {
@@ -222,10 +282,10 @@ a:hover {
   gap: 0.35rem;
   padding: 0.65rem 1rem;
   border-radius: 12px;
-  border: 2px solid var(--bujo-accent-ink);
-  background: linear-gradient(180deg, #3c6656 0%, #244336 100%);
-  color: #fff;
-  box-shadow: 0 6px 0 var(--bujo-shadow);
+  border: 2px solid #d9ccff;
+  background: linear-gradient(180deg, #f6f0ff 0%, #e5dbff 100%);
+  color: #3b2f64;
+  box-shadow: 0 6px 0 #c4b5fd;
   font-weight: 700;
   letter-spacing: 0.01em;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
@@ -234,31 +294,32 @@ a:hover {
 
 .bujo-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 7px 0 var(--bujo-shadow);
+  background: linear-gradient(180deg, #f3eaff 0%, #dfd2ff 100%);
+  box-shadow: 0 7px 0 #bca8ff;
 }
 
 .bujo-btn:active {
   transform: translateY(1px);
-  box-shadow: 0 4px 0 var(--bujo-shadow);
+  box-shadow: 0 4px 0 #b498ff;
 }
 
 .bujo-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
-  box-shadow: 0 6px 0 var(--bujo-shadow);
+  box-shadow: 0 6px 0 #c4b5fd;
 }
 
 .bujo-btn-secondary {
-  background: #fffbf4;
-  color: var(--bujo-ink);
-  border: 1.5px dashed var(--bujo-border);
-  box-shadow: 0 6px 0 var(--bujo-shadow);
+  background: #f6f0ff;
+  color: #3b2f64;
+  border: 1.5px dashed #d9ccff;
+  box-shadow: 0 6px 0 #c4b5fd;
   cursor: pointer;
 }
 
 .bujo-btn-secondary:hover {
-  background: #f6eedf;
+  background: #f3eaff;
 }
 
 .bujo-btn-danger {

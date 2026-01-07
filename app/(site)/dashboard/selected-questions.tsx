@@ -23,7 +23,7 @@ export default function SelectedQuestions({ userQuestions }: Props) {
   };
 
   return (
-    <section className="bujo-card bujo-ruled">
+    <section className="bujo-card bujo-torn">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-[var(--bujo-ink)]">Your daily list</h2>

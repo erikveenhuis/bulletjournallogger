@@ -1,5 +1,5 @@
 import Link from "next/link";
-import NavLinks from "@/components/nav-links";
+import HeaderNav from "@/components/header-nav";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function Header() {
@@ -17,26 +17,7 @@ export default async function Header() {
         <Link href="/" className="bujo-brand text-sm">
           Bullet Journal Logger
         </Link>
-        <nav className="bujo-nav flex w-full flex-wrap items-center justify-end gap-2 text-sm font-medium text-gray-800 sm:w-auto">
-          <NavLinks showAdmin={!!profile?.is_admin} />
-          {user ? (
-            <form action="/api/auth/signout" method="post" className="w-full sm:w-auto">
-              <button
-                type="submit"
-                className="bujo-btn-secondary w-full justify-center text-sm sm:w-auto"
-              >
-                Sign out
-              </button>
-            </form>
-          ) : (
-            <Link
-              href="/sign-in"
-              className="bujo-btn-secondary w-full justify-center text-sm sm:w-auto"
-            >
-              Sign in
-            </Link>
-          )}
-        </nav>
+        <HeaderNav showAdmin={!!profile?.is_admin} isSignedIn={!!user} />
       </div>
     </header>
   );

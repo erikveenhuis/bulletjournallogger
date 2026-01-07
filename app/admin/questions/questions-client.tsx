@@ -21,6 +21,23 @@ export default function AdminForms({ categories, templates }: Props) {
     Record<string, { title: string; category_id: string | null; type: string; meta: string; is_active: boolean }>
   >({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+
+  const categoryNameById = (id: string | null) => {
+    if (!id) return "";
+    const match = categories.find((c) => c.id === id);
+    return match?.name ?? "";
+  };
+
+  const filteredTemplates = templates.filter((t) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      t.title.toLowerCase().includes(q) ||
+      categoryNameById(t.category_id)?.toLowerCase().includes(q) ||
+      t.type.toLowerCase().includes(q)
+    );
+  });
 
   useEffect(() => {
     const nextTemplateEdits: Record<
@@ -122,7 +139,7 @@ export default function AdminForms({ categories, templates }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="bujo-card bujo-ruled">
+      <div className="bujo-card bujo-torn">
         <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Add template</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
@@ -174,16 +191,26 @@ export default function AdminForms({ categories, templates }: Props) {
         </div>
       </div>
 
-      <div className="bujo-card bujo-ruled">
+      <div className="bujo-card bujo-torn">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Manage templates</h2>
-          <span className="bujo-chip text-xs">{templates.length} total</span>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Manage templates</h2>
+            <span className="bujo-chip text-xs">
+              {filteredTemplates.length} / {templates.length} shown
+            </span>
+          </div>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter by title, category, or type"
+            className="bujo-input w-full max-w-xs text-sm"
+          />
         </div>
         <div className="mt-3 space-y-4">
-          {templates.length === 0 ? (
+          {filteredTemplates.length === 0 ? (
             <p className="text-sm text-[var(--bujo-subtle)]">No templates yet.</p>
           ) : (
-            templates.map((t) => (
+            filteredTemplates.map((t) => (
               <div
                 key={t.id}
                 className="space-y-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3"

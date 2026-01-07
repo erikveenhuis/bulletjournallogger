@@ -12,6 +12,13 @@ export type Profile = {
   chart_style?: ChartStyle | null;
 };
 
+export type AdminProfile = Profile & {
+  created_at?: string | null;
+  email?: string | null;
+  auth_created_at?: string | null;
+  last_sign_in_at?: string | null;
+};
+
 export type ChartPalette = {
   accent: string;
   accentSoft: string;

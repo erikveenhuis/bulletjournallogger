@@ -42,7 +42,7 @@ export default function SignInPage() {
   };
 
   return (
-    <div className="mx-auto max-w-md bujo-card bujo-ruled">
+    <div className="mx-auto max-w-md bujo-card bujo-torn">
       <h1 className="text-xl font-semibold text-gray-900">Sign in</h1>
       <p className="text-sm text-gray-700">
         New here?{" "}

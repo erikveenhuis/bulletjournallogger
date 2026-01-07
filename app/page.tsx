@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="bujo-card bujo-ruled grid gap-8">
+    <div className="bujo-card bujo-torn grid gap-8">
       <div className="flex flex-col gap-4">
         <p className="bujo-section-title">Bullet Journal Logger</p>
         <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">

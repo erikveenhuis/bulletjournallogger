@@ -40,7 +40,7 @@ export default function TemplatesClient({
   };
 
   return (
-    <section className="bujo-card bujo-ruled">
+    <section className="bujo-card bujo-torn">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Browse templates</h2>

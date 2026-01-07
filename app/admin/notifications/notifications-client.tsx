@@ -17,6 +17,16 @@ export default function NotificationsClient({ subscriptions: initialSubscription
   const [message, setMessage] = useState<string | null>(null);
   const [subscriptions, setSubscriptions] = useState<PushSubscription[]>(initialSubscriptions);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+
+  const filtered = subscriptions.filter((sub) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const endpoint = sub.endpoint.toLowerCase();
+    const uid = sub.user_id.toLowerCase();
+    const ua = sub.ua?.toLowerCase() ?? "";
+    return endpoint.includes(q) || uid.includes(q) || ua.includes(q);
+  });
 
   const deleteSubscription = async () => {
     if (!pendingDeleteId) return;
@@ -38,7 +48,7 @@ export default function NotificationsClient({ subscriptions: initialSubscription
   };
 
   return (
-    <div className="bujo-card bujo-ruled">
+    <div className="bujo-card bujo-torn">
       <div className="flex items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Notification subscriptions</h2>
@@ -46,10 +56,20 @@ export default function NotificationsClient({ subscriptions: initialSubscription
             Active push endpoints (latest 500). Remove stale entries when needed.
           </p>
         </div>
-        <span className="bujo-chip text-xs">{subscriptions.length} total</span>
+        <span className="bujo-chip text-xs">
+          {filtered.length} / {subscriptions.length} shown
+        </span>
+      </div>
+      <div className="mt-3">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter by user id, endpoint, or user agent"
+          className="bujo-input w-full text-sm"
+        />
       </div>
       <div className="mt-3 overflow-auto">
-        {subscriptions.length === 0 ? (
+        {filtered.length === 0 ? (
           <p className="text-sm text-[var(--bujo-subtle)]">No subscriptions found.</p>
         ) : (
           <table className="min-w-full divide-y divide-[var(--bujo-border)] text-sm">
@@ -65,7 +85,7 @@ export default function NotificationsClient({ subscriptions: initialSubscription
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--bujo-border)]">
-              {subscriptions.map((sub) => {
+              {filtered.map((sub) => {
                 const profile = Array.isArray(sub.profiles) ? sub.profiles?.[0] : sub.profiles;
                 const reminder = profile?.reminder_time ? profile.reminder_time.slice(0, 5) : "—";
                 const timezone = profile?.timezone || "UTC";

@@ -802,7 +802,7 @@ export default function InsightsChart({
 
   if (questionSeries.length === 0) {
     return (
-      <div className={`bujo-card bujo-ruled ${isBrush ? "bujo-card--brush" : ""} ${isSolid ? "bujo-card--solid" : ""}`}>
+      <div className={`bujo-card bujo-torn ${isBrush ? "bujo-card--brush" : ""} ${isSolid ? "bujo-card--solid" : ""}`}>
         <h2 className="text-xl font-semibold text-gray-900">Trends</h2>
         <p className="text-sm text-gray-700">No data yet.</p>
       </div>
@@ -814,7 +814,7 @@ export default function InsightsChart({
       {seriesData.map((series) => (
         <div
           key={series.id}
-          className={`bujo-card bujo-ruled ${isBrush ? "bujo-card--brush" : ""} ${isSolid ? "bujo-card--solid" : ""}`}
+          className={`bujo-card bujo-torn ${isBrush ? "bujo-card--brush" : ""} ${isSolid ? "bujo-card--solid" : ""}`}
         >
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>

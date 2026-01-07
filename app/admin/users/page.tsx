@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { AdminProfile } from "@/lib/types";
 import UsersClient from "./users-client";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +35,35 @@ export default async function AdminUsersPage() {
   }
 
   const adminClient = createAdminClient();
-  const { data: profiles } = await adminClient
-    .from("profiles")
-    .select("user_id,timezone,reminder_time,push_opt_in,is_admin,created_at")
-    .order("created_at", { ascending: false })
-    .limit(200);
+  const [profilesResult, authUsersResult] = await Promise.all([
+    adminClient
+      .from("profiles")
+      .select("user_id,timezone,reminder_time,push_opt_in,is_admin,created_at")
+      .order("created_at", { ascending: false })
+      .limit(200),
+    adminClient.auth.admin.listUsers({ page: 1, perPage: 200 }),
+  ]);
+
+  const authUserMap = new Map(
+    (authUsersResult.data?.users || []).map((u) => [
+      u.id,
+      {
+        email: u.email,
+        last_sign_in_at: u.last_sign_in_at,
+        auth_created_at: u.created_at,
+      },
+    ]),
+  );
+
+  const profiles: AdminProfile[] = (profilesResult.data || []).map((p) => {
+    const authUser = authUserMap.get(p.user_id);
+    return {
+      ...p,
+      email: authUser?.email ?? null,
+      last_sign_in_at: authUser?.last_sign_in_at ?? null,
+      auth_created_at: authUser?.auth_created_at ?? null,
+    };
+  });
 
   return (
     <div className="space-y-4">
@@ -52,7 +77,7 @@ export default async function AdminUsersPage() {
         </Link>
       </div>
 
-      <UsersClient profiles={profiles || []} />
+      <UsersClient profiles={profiles} currentUserId={user.id} />
     </div>
   );
 }

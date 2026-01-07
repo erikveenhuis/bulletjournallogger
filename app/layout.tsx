@@ -31,8 +31,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Short+Stack&display=swap"
+        />
+      </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${journalScript.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${journalScript.variable} doodle antialiased`}
       >
         <Header />
         <main className="mx-auto max-w-6xl px-4 pb-14 pt-8 sm:px-6 sm:pb-16 sm:pt-12 bujo-shell">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Category } from "@/lib/types";
 import ConfirmDialog from "@/components/confirm-dialog";
 
@@ -14,6 +14,15 @@ export default function CategoriesClient({ categories }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [catEdits, setCatEdits] = useState<Record<string, { name: string; description: string }>>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return categories;
+    return categories.filter(
+      (c) => c.name.toLowerCase().includes(q) || (c.description?.toLowerCase() ?? "").includes(q),
+    );
+  }, [categories, query]);
 
   useEffect(() => {
     const nextCatEdits: Record<string, { name: string; description: string }> = {};
@@ -77,7 +86,7 @@ export default function CategoriesClient({ categories }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="bujo-card bujo-ruled">
+      <div className="bujo-card bujo-torn">
         <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Add category</h2>
         <div className="mt-3 space-y-2">
           <input
@@ -98,13 +107,21 @@ export default function CategoriesClient({ categories }: Props) {
         </div>
       </div>
 
-      <div className="bujo-card bujo-ruled">
-        <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Manage categories</h2>
+      <div className="bujo-card bujo-torn">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Manage categories</h2>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter by name or description"
+            className="bujo-input w-full max-w-xs text-sm"
+          />
+        </div>
         <div className="mt-3 space-y-3">
-          {categories.length === 0 ? (
+          {filtered.length === 0 ? (
             <p className="text-sm text-[var(--bujo-subtle)]">No categories yet.</p>
           ) : (
-            categories.map((c) => (
+            filtered.map((c) => (
               <div
                 key={c.id}
                 className="grid gap-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3 md:grid-cols-3"
@@ -132,7 +149,7 @@ export default function CategoriesClient({ categories }: Props) {
                   </button>
                 </div>
               </div>
-            ))
+              ))
           )}
         </div>
       </div>

@@ -370,7 +370,7 @@ export default function ProfileForm({
   }, [profile?.push_opt_in]);
 
   return (
-    <section className="bujo-card bujo-ruled">
+    <section className="bujo-card bujo-torn">
       <h2 className="text-xl font-semibold text-gray-900">Reminders</h2>
       <p className="text-sm text-gray-700">
         Pick your timezone and reminder time. Enable push to receive daily notifications.
@@ -419,16 +419,20 @@ export default function ProfileForm({
               type="button"
               onClick={() => (pushOptIn ? disablePush() : enablePush())}
               aria-pressed={pushOptIn}
-              className={`relative inline-flex h-[44px] w-[84px] items-center rounded-full transition-colors duration-200 ${
-                pushOptIn ? "bg-[var(--bujo-accent)]" : "bg-gray-300"
+              className={`group relative inline-flex h-[58px] w-28 items-center overflow-hidden rounded-lg border-2 px-1 transition-all duration-200 ${
+                pushOptIn
+                  ? "justify-end border-[var(--bujo-accent-ink)] bg-[var(--bujo-accent)]/15 shadow-[0_6px_0_var(--bujo-shadow)]"
+                  : "justify-start border-[var(--bujo-border)] bg-white shadow-sm hover:border-[var(--bujo-ink)]/30"
               }`}
             >
               <span className="sr-only">Toggle push reminders</span>
               <span
-                className={`inline-block h-9 w-9 transform rounded-full bg-white shadow transition duration-200 ${
-                  pushOptIn ? "translate-x-[44px]" : "translate-x-1"
+                className={`flex h-[50px] w-[56px] items-center justify-center rounded-md text-[11px] font-semibold uppercase tracking-tight text-white shadow transition-all duration-200 ${
+                  pushOptIn ? "bg-[var(--bujo-accent-ink)]" : "bg-[var(--bujo-ink)]/80"
                 }`}
-              />
+              >
+                {pushOptIn ? "On" : "Off"}
+              </span>
             </button>
           </div>
         </div>

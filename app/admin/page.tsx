@@ -63,7 +63,7 @@ export default async function AdminHomePage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         {adminSections.map((section) => (
-          <div key={section.href} className="bujo-card bujo-ruled">
+          <div key={section.href} className="bujo-card bujo-torn">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">{section.title}</h2>
