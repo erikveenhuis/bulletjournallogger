@@ -20,10 +20,14 @@ export default function SignUpPage() {
       if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
         throw new Error("Supabase environment variables are missing.");
       }
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://bulletjournallogger.up.railway.app";
       const supabase = createClient();
       const { error: signError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          emailRedirectTo: siteUrl,
+        },
       });
       if (signError) {
         setError(signError.message);
