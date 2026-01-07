@@ -871,7 +871,7 @@ export default function InsightsChart({
                   const yMin = yMinBase !== undefined ? Math.max(0, yMinBase - verticalPadding) : undefined;
                   const yMax = yMaxBase !== undefined ? yMaxBase + verticalPadding : undefined;
                   const baseStepSize = (
-                    baseLineOptions.scales?.y as ScaleOptionsByType["linear"] | undefined
+                    baseLineOptions.scales?.y as ScaleOptionsByType<"line">["linear"] | undefined
                   )?.ticks?.stepSize;
                   const stepSize =
                     series.type === "scale" && yMinBase !== undefined && yMaxBase !== undefined
