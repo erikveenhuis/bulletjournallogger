@@ -14,6 +14,7 @@ import {
   type ChartOptions,
 } from "chart.js";
 import { addDays, format, parseISO, startOfWeek, subWeeks } from "date-fns";
+import { type ChartPalette, type ChartStyle } from "@/lib/types";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, ChartLegend);
 
@@ -45,24 +46,106 @@ type QuestionSeries = {
   type: "scale" | "number" | "boolean" | "other";
   typeLabel: string;
   unit?: string;
+  scaleRange?: { min: number; max: number };
   points: Array<{ date: string; value: number }>;
 };
 
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const scaleColors = {
-  veryLow: "#f1edff",
-  low: "#d9ceff",
-  mid: "#b6a3ff",
-  high: "#9277ff",
-  veryHigh: "#6f3dff",
+const defaultPalette: ChartPalette = {
+  accent: "#2f4a3d",
+  accentSoft: "#5f8b7a",
+  booleanYes: "#5ce695",
+  booleanNo: "#f98c80",
+  scaleLow: "#ffeacc",
+  scaleHigh: "#ff813d",
 };
+
+type ScaleColors = {
+  veryLow: string;
+  low: string;
+  mid: string;
+  high: string;
+  veryHigh: string;
+};
+
+const hexColorPattern = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+function normalizeHexColor(value?: string | null) {
+  if (!value || typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!hexColorPattern.test(trimmed)) return null;
+  const raw = trimmed.slice(1);
+  const expanded = raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw;
+  return `#${expanded.toLowerCase()}`;
+}
+
+function sanitizePalette(input?: Partial<ChartPalette> | null): ChartPalette {
+  const palette = { ...defaultPalette };
+  if (!input) return palette;
+  (Object.keys(palette) as Array<keyof ChartPalette>).forEach((key) => {
+    const normalized = normalizeHexColor(input[key] || undefined);
+    if (normalized) {
+      palette[key] = normalized;
+    }
+  });
+  return palette;
+}
+
+function hexToRgb(hex: string) {
+  const normalized = normalizeHexColor(hex);
+  if (!normalized) return null;
+  const raw = normalized.slice(1);
+  return {
+    r: Number.parseInt(raw.slice(0, 2), 16),
+    g: Number.parseInt(raw.slice(2, 4), 16),
+    b: Number.parseInt(raw.slice(4, 6), 16),
+  };
+}
+
+function toRgba(hex: string, alpha: number, fallback: string) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return fallback;
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
+function mixHex(from: string, to: string, ratio: number, fallback: string) {
+  const start = hexToRgb(from);
+  const end = hexToRgb(to);
+  if (!start || !end) return fallback;
+  const mix = (a: number, b: number) => Math.round(a + (b - a) * ratio);
+  const r = mix(start.r, end.r).toString(16).padStart(2, "0");
+  const g = mix(start.g, end.g).toString(16).padStart(2, "0");
+  const b = mix(start.b, end.b).toString(16).padStart(2, "0");
+  return `#${r}${g}${b}`;
+}
+
+function buildScaleColors(palette: ChartPalette): ScaleColors {
+  return {
+    veryLow: palette.scaleLow,
+    low: mixHex(palette.scaleLow, palette.scaleHigh, 0.25, palette.scaleLow),
+    mid: mixHex(palette.scaleLow, palette.scaleHigh, 0.5, palette.scaleLow),
+    high: mixHex(palette.scaleLow, palette.scaleHigh, 0.75, palette.scaleHigh),
+    veryHigh: palette.scaleHigh,
+  };
+}
 
 function toQuestionSeries(answers: AnswerRow[]): QuestionSeries[] {
   return Object.values(
     answers.reduce<Record<string, QuestionSeries>>((acc, row) => {
       const meta = (row.question_templates?.meta as Record<string, unknown> | null) || null;
       const metaUnit = meta?.["unit"];
+      const metaMin = meta?.["min"];
+      const metaMax = meta?.["max"];
       const unit = typeof metaUnit === "string" ? metaUnit : undefined;
+      const scaleMinValue = typeof metaMin === "number" ? metaMin : 1;
+      const scaleMaxValue =
+        typeof metaMax === "number" ? metaMax : typeof metaMin === "number" ? metaMin + 4 : 5;
+      const scaleRange =
+        typeof metaMin === "number" || typeof metaMax === "number"
+          ? scaleMaxValue > scaleMinValue
+            ? { min: scaleMinValue, max: scaleMaxValue }
+            : { min: scaleMinValue, max: scaleMinValue + 4 }
+          : { min: 1, max: 5 };
       const type = (row.question_templates?.type as QuestionSeries["type"]) || "other";
       const templateId = row.template_id || undefined;
       const value =
@@ -101,6 +184,7 @@ function toQuestionSeries(answers: AnswerRow[]): QuestionSeries[] {
           type,
           typeLabel,
           unit,
+          scaleRange: type === "scale" ? scaleRange : undefined,
           points: [],
         };
       }
@@ -131,22 +215,42 @@ function buildDailyAverages(series: QuestionSeries) {
   return entries;
 }
 
-function colorForValue(value: number, type: QuestionSeries["type"], maxValue: number) {
+function colorForValue(
+  value: number,
+  type: QuestionSeries["type"],
+  maxValue: number,
+  palette: ChartPalette,
+  scaleColors: ScaleColors,
+  scaleRange?: QuestionSeries["scaleRange"],
+) {
   if (type === "boolean") {
-    return value >= 1 ? "#2ecc71" : "#e74c3c";
+    return value >= 1 ? palette.booleanYes : palette.booleanNo;
   }
   if (type === "scale") {
-    if (value >= 9) return scaleColors.veryHigh;
-    if (value >= 7) return scaleColors.high;
-    if (value >= 5) return scaleColors.mid;
-    if (value >= 3) return scaleColors.low;
+    const min = scaleRange?.min ?? 1;
+    const max = scaleRange?.max ?? Math.max(min + 4, maxValue || min + 4);
+    const range = Math.max(1, max - min);
+    const normalized = Math.min(1, Math.max(0, (value - min) / range));
+    if (normalized >= 0.8) return scaleColors.veryHigh;
+    if (normalized >= 0.6) return scaleColors.high;
+    if (normalized >= 0.4) return scaleColors.mid;
+    if (normalized >= 0.2) return scaleColors.low;
     return scaleColors.veryLow;
   }
-  // number or other — use relative scale
+  if (type === "number") {
+    if (maxValue <= 0) return "#e5e7eb";
+    const ratio = Math.min(1, Math.max(0, value / maxValue));
+    if (ratio >= 0.8) return scaleColors.veryHigh;
+    if (ratio >= 0.6) return scaleColors.high;
+    if (ratio >= 0.4) return scaleColors.mid;
+    if (ratio >= 0.2) return scaleColors.low;
+    return scaleColors.veryLow;
+  }
+  // other — fall back to accent with alpha
   if (maxValue <= 0) return "#e5e7eb";
   const ratio = Math.min(1, value / maxValue);
   const alpha = 0.2 + 0.6 * ratio;
-  return `rgba(124, 92, 255, ${alpha.toFixed(2)})`;
+  return toRgba(palette.accent, alpha, `rgba(124, 92, 255, ${alpha.toFixed(2)})`);
 }
 
 function upsertPoint(points: Array<{ date: string; value: number }>, date: string, value: number) {
@@ -154,16 +258,24 @@ function upsertPoint(points: Array<{ date: string; value: number }>, date: strin
   return [...filtered, { date, value }].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function LegendKey({ type }: { type: QuestionSeries["type"] }) {
+function LegendKey({
+  type,
+  scaleColors,
+  palette,
+}: {
+  type: QuestionSeries["type"];
+  scaleColors: ScaleColors;
+  palette: ChartPalette;
+}) {
   if (type === "boolean") {
     return (
       <div className="mt-2 flex items-center gap-3 text-xs text-gray-700">
         <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded-sm bg-[#2ecc71]" />
+          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: palette.booleanYes }} />
           Yes
         </span>
         <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded-sm bg-[#e74c3c]" />
+          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: palette.booleanNo }} />
           No
         </span>
       </div>
@@ -201,20 +313,30 @@ function LegendKey({ type }: { type: QuestionSeries["type"] }) {
 function QuestionCalendar({
   series,
   onSelectDay,
+  palette,
+  scaleColors,
+  chartStyle,
 }: {
   series: QuestionSeries;
   onSelectDay: (date: string, value: number | undefined, isFuture: boolean) => void;
+  palette: ChartPalette;
+  scaleColors: ScaleColors;
+  chartStyle: ChartStyle;
 }) {
   const today = new Date();
   const calendarEnd = startOfWeek(today, { weekStartsOn: 0 });
   const calendarStart = startOfWeek(subWeeks(calendarEnd, 5), { weekStartsOn: 0 });
+  const isBrush = chartStyle === "brush";
+  const isSolid = chartStyle === "solid";
 
   const daily = buildDailyAverages(series);
   const valueMap = daily.reduce<Record<string, number>>((map, d) => {
     map[d.date] = d.value;
     return map;
   }, {});
-  const maxValue = daily.reduce((m, d) => Math.max(m, d.value), 0);
+  const observedMax = daily.reduce((m, d) => Math.max(m, d.value), 0);
+  const maxValue =
+    series.type === "scale" ? series.scaleRange?.max ?? Math.max(observedMax, 0) : observedMax;
 
   const days: Date[] = [];
   let cursor = calendarStart;
@@ -225,7 +347,9 @@ function QuestionCalendar({
 
   return (
     <div className="mt-3 overflow-x-auto">
-      <div className="bujo-calendar min-w-[520px] space-y-3">
+      <div
+        className={`bujo-calendar min-w-[520px] space-y-3 ${isSolid ? "bujo-calendar--solid" : ""}`}
+      >
         <div className="grid grid-cols-7 gap-1 text-[11px] font-semibold text-gray-700">
           {weekdayLabels.map((w) => (
             <span key={w} className="text-center">
@@ -237,8 +361,24 @@ function QuestionCalendar({
           {days.map((day) => {
             const dayStr = format(day, "yyyy-MM-dd");
             const value = valueMap[dayStr];
+            const hasValue = value !== undefined;
             const isFuture = day > today;
-            const bg = value !== undefined ? colorForValue(value, series.type, maxValue) : "#f3f4f6";
+            const bg =
+              hasValue
+                ? colorForValue(value, series.type, maxValue, palette, scaleColors, series.scaleRange)
+                : "#f3f4f6";
+            const brushLayer =
+              !isFuture && isBrush && hasValue
+                ? `repeating-linear-gradient(-12deg, rgba(47,74,61,0.06) 0 9px, transparent 9px 18px), ${bg}`
+                : undefined;
+            const solidLayer =
+              !isFuture && isSolid && hasValue
+                ? bg
+                : undefined;
+            const gradientLayer =
+              !isFuture && !isBrush && !isSolid && hasValue
+                ? `linear-gradient(135deg, ${bg} 0%, ${palette.scaleHigh} 100%)`
+                : undefined;
             const title =
               value !== undefined
                 ? series.type === "boolean"
@@ -251,11 +391,17 @@ function QuestionCalendar({
             return (
               <div
                 key={dayStr}
-                className={`bujo-calendar-day h-14 ${isFuture ? "bujo-calendar-day--future" : "cursor-pointer"}`}
+                className={`bujo-calendar-day h-14 ${
+                  isFuture ? "bujo-calendar-day--future" : "cursor-pointer"
+                } ${isBrush && hasValue ? "bujo-calendar-day--brush" : ""} ${isSolid && hasValue ? "bujo-calendar-day--solid" : ""}`}
                 style={{
                   background: isFuture
                     ? "#f8f1e0"
-                    : `linear-gradient(135deg, ${bg} 0%, ${bg} 68%, rgba(255,255,255,0.92) 100%)`,
+                    : brushLayer || solidLayer || gradientLayer || bg,
+                  boxShadow: isBrush
+                    ? "inset 0 0 0 1px rgba(47,74,61,0.08), 0 4px 0 var(--bujo-shadow)"
+                    : undefined,
+                  borderColor: isBrush ? "rgba(47,74,61,0.35)" : isSolid ? "rgba(47,74,61,0.25)" : undefined,
                 }}
                 title={title}
                 aria-label={title}
@@ -274,19 +420,33 @@ function QuestionCalendar({
             );
           })}
         </div>
-        <LegendKey type={series.type} />
+        <LegendKey type={series.type} scaleColors={scaleColors} palette={palette} />
       </div>
     </div>
   );
 }
 
-function NumberBarChart({ series }: { series: QuestionSeries }) {
+function NumberBarChart({
+  series,
+  palette,
+  scaleColors,
+  chartStyle,
+}: {
+  series: QuestionSeries;
+  palette: ChartPalette;
+  scaleColors: ScaleColors;
+  chartStyle: ChartStyle;
+}) {
   const daily = buildDailyAverages(series);
   const last = daily.slice(-14);
   if (last.length === 0) return null;
+  const isBrush = chartStyle === "brush";
+  const isSolid = chartStyle === "solid";
 
   const maxValue = last.reduce((m, d) => Math.max(m, d.value), 0);
-  const colors = last.map((d) => colorForValue(d.value, series.type, maxValue));
+  const colors = last.map((d) =>
+    colorForValue(d.value, series.type, maxValue, palette, scaleColors, series.scaleRange),
+  );
 
   const options = useMemo<ChartOptions<"bar">>(
     () => ({
@@ -332,13 +492,13 @@ function NumberBarChart({ series }: { series: QuestionSeries }) {
       },
       elements: {
         bar: {
-          borderRadius: 8,
-          borderWidth: 1.4,
-          borderColor: "rgba(47, 74, 61, 0.55)",
+          borderRadius: isBrush ? 3 : isSolid ? 4 : 8,
+          borderWidth: isBrush ? 0.8 : isSolid ? 1.1 : 1.4,
+          borderColor: isBrush ? "rgba(47, 74, 61, 0.45)" : "rgba(47, 74, 61, 0.55)",
         },
       },
     }),
-    [],
+    [isBrush, isSolid],
   );
 
   const data = {
@@ -354,7 +514,7 @@ function NumberBarChart({ series }: { series: QuestionSeries }) {
   };
 
   return (
-    <div className="mt-4 bujo-chart">
+    <div className={`mt-4 bujo-chart ${isBrush ? "bujo-chart--brush" : ""} ${isSolid ? "bujo-chart--solid" : ""}`}>
       <Bar data={data} options={options} />
     </div>
   );
@@ -382,6 +542,8 @@ function DayValueModal({
 }) {
   const series = state?.series;
   const [value, setValue] = useState<number | boolean | null>(null);
+  const scaleMin = series?.scaleRange?.min ?? 1;
+  const scaleMax = series?.scaleRange?.max ?? 5;
 
   useEffect(() => {
     if (!state || !series) return;
@@ -437,12 +599,12 @@ function DayValueModal({
           ) : (
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-600">
-                {series.type === "scale" ? "Scale value (0-10)" : "Numeric value"}
+                {series.type === "scale" ? `Scale value (${scaleMin}-${scaleMax})` : "Numeric value"}
               </label>
               <input
                 type="number"
-                min={0}
-                max={10}
+                min={series.type === "scale" ? scaleMin : undefined}
+                max={series.type === "scale" ? scaleMax : undefined}
                 step={1}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                 value={typeof value === "number" ? value : ""}
@@ -497,14 +659,28 @@ function DayValueModal({
   );
 }
 
-export default function InsightsChart({ answers }: { answers: AnswerRow[] }) {
+export default function InsightsChart({
+  answers,
+  chartPalette,
+  chartStyle,
+}: {
+  answers: AnswerRow[];
+  chartPalette?: Partial<ChartPalette> | null;
+  chartStyle?: ChartStyle | null;
+}) {
   const questionSeries = useMemo(() => toQuestionSeries(answers), [answers]);
   const [seriesData, setSeriesData] = useState<QuestionSeries[]>(questionSeries);
   const [modalState, setModalState] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const palette = useMemo(() => sanitizePalette(chartPalette ?? null), [chartPalette]);
+  const scaleColors = useMemo(() => buildScaleColors(palette), [palette]);
+  const resolvedStyle: ChartStyle =
+    chartStyle === "brush" || chartStyle === "solid" ? chartStyle : "gradient";
+  const isBrush = resolvedStyle === "brush";
+  const isSolid = resolvedStyle === "solid";
 
-  const lineOptions = useMemo<ChartOptions<"line">>(
+  const baseLineOptions = useMemo<ChartOptions<"line">>(
     () => ({
       responsive: true,
       plugins: {
@@ -518,13 +694,23 @@ export default function InsightsChart({ answers }: { answers: AnswerRow[] }) {
         },
       },
       elements: {
-        line: { tension: 0.35, borderDash: [6, 4], borderWidth: 2.6 },
+        line: {
+          tension: isBrush ? 0.22 : 0.35,
+          borderDash: isBrush ? [2, 3.5] : isSolid ? [] : [6, 4],
+          borderWidth: isBrush ? 3.1 : isSolid ? 2.2 : 2.6,
+          borderCapStyle: "round",
+          borderJoinStyle: "round",
+        },
         point: {
-          radius: 4.4,
-          borderWidth: 1.6,
-          backgroundColor: "#fffbf4",
-          borderColor: "var(--bujo-accent-ink)",
-          hoverRadius: 6,
+          radius: isBrush ? 5.2 : isSolid ? 4.8 : 4.4,
+          borderWidth: isBrush ? 2 : isSolid ? 1.8 : 1.6,
+          backgroundColor: isBrush
+            ? toRgba(palette.accentSoft, 0.52, "#fef3c7")
+            : isSolid
+              ? toRgba(palette.accentSoft, 0.24, "#fdf3c4")
+              : "#fffbf4",
+          borderColor: toRgba(palette.accent, 1, "var(--bujo-accent-ink)"),
+          hoverRadius: isBrush ? 6.8 : isSolid ? 6.2 : 6,
         },
       },
       scales: {
@@ -552,7 +738,7 @@ export default function InsightsChart({ answers }: { answers: AnswerRow[] }) {
         },
       },
     }),
-    [],
+    [palette, isBrush, isSolid],
   );
 
   useEffect(() => {
@@ -616,7 +802,7 @@ export default function InsightsChart({ answers }: { answers: AnswerRow[] }) {
 
   if (questionSeries.length === 0) {
     return (
-      <div className="bujo-card bujo-ruled">
+      <div className={`bujo-card bujo-ruled ${isBrush ? "bujo-card--brush" : ""} ${isSolid ? "bujo-card--solid" : ""}`}>
         <h2 className="text-xl font-semibold text-gray-900">Trends</h2>
         <p className="text-sm text-gray-700">No data yet.</p>
       </div>
@@ -626,7 +812,10 @@ export default function InsightsChart({ answers }: { answers: AnswerRow[] }) {
   return (
     <div className="space-y-4">
       {seriesData.map((series) => (
-        <div key={series.id} className="bujo-card bujo-ruled">
+        <div
+          key={series.id}
+          className={`bujo-card bujo-ruled ${isBrush ? "bujo-card--brush" : ""} ${isSolid ? "bujo-card--solid" : ""}`}
+        >
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">{series.label}</h2>
@@ -637,25 +826,74 @@ export default function InsightsChart({ answers }: { answers: AnswerRow[] }) {
           <QuestionCalendar
             series={series}
             onSelectDay={(date, value, isFuture) => handleSelectDay(series, date, value, isFuture)}
+            palette={palette}
+            scaleColors={scaleColors}
+            chartStyle={resolvedStyle}
           />
 
           {series.type === "number" ? (
-            <NumberBarChart series={series} />
+            <NumberBarChart
+              series={series}
+              palette={palette}
+              scaleColors={scaleColors}
+              chartStyle={resolvedStyle}
+            />
           ) : series.type === "boolean" ? null : (
-            <div className="mt-4 bujo-chart">
+            <div className={`mt-4 bujo-chart ${isBrush ? "bujo-chart--brush" : ""} ${isSolid ? "bujo-chart--solid" : ""}`}>
               <Line
-                data={{
-                  labels: buildDailyAverages(series).map((d) => d.date.slice(5)),
-                  datasets: [
-                    {
-                      label: `${series.typeLabel} trend`,
-                      data: buildDailyAverages(series).map((d) => d.value),
-                      borderColor: "rgba(47, 74, 61, 0.85)",
-                      backgroundColor: "rgba(95, 139, 122, 0.18)",
+                data={(() => {
+                  const daily = buildDailyAverages(series);
+                  return {
+                    labels: daily.map((d) => d.date.slice(5)),
+                    datasets: [
+                      {
+                        label: `${series.typeLabel} trend`,
+                        data: daily.map((d) => d.value),
+                        borderColor: toRgba(palette.accent, 0.9, "rgba(47, 74, 61, 0.85)"),
+                        backgroundColor: isBrush
+                          ? toRgba(palette.accent, 0.12, "rgba(47, 74, 61, 0.12)")
+                          : isSolid
+                            ? toRgba(palette.accentSoft, 0.12, "rgba(95, 139, 122, 0.12)")
+                            : toRgba(palette.accentSoft, 0.18, "rgba(95, 139, 122, 0.18)"),
+                      },
+                    ],
+                  };
+                })()}
+                options={(() => {
+                  const yMinBase = series.type === "scale" ? series.scaleRange?.min ?? 1 : undefined;
+                  const yMaxBase = series.type === "scale" ? series.scaleRange?.max ?? 5 : undefined;
+                  const verticalPadding = series.type === "scale" ? 0.35 : 0;
+                  const yMin = yMinBase !== undefined ? Math.max(0, yMinBase - verticalPadding) : undefined;
+                  const yMax = yMaxBase !== undefined ? yMaxBase + verticalPadding : undefined;
+                  const stepSize =
+                    series.type === "scale" && yMinBase !== undefined && yMaxBase !== undefined
+                      ? Math.max(1, Math.round((yMaxBase - yMinBase) / 4))
+                      : baseLineOptions.scales?.y?.ticks?.stepSize;
+                  const tickCallback =
+                    series.type === "scale"
+                      ? (value: string | number) => {
+                          const numeric = typeof value === "string" ? Number(value) : value;
+                          return Number.isInteger(numeric) ? numeric.toString() : "";
+                        }
+                      : baseLineOptions.scales?.y?.ticks?.callback;
+
+                  return {
+                    ...baseLineOptions,
+                    plugins: { ...(baseLineOptions.plugins || {}) },
+                    elements: { ...(baseLineOptions.elements || {}) },
+                    scales: {
+                      ...baseLineOptions.scales,
+                      y: {
+                        ...baseLineOptions.scales?.y,
+                        min: yMin,
+                        max: yMax,
+                        suggestedMin: yMinBase,
+                        suggestedMax: yMaxBase,
+                        ticks: { ...(baseLineOptions.scales?.y?.ticks || {}), stepSize, callback: tickCallback },
+                      },
                     },
-                  ],
-                }}
-                options={lineOptions}
+                  };
+                })()}
               />
             </div>
           )}

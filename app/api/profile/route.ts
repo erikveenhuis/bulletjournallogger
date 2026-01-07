@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const fiveMinutePattern = /^([01]\d|2[0-3]):([0-5]\d)(?::\d{2})?$/;
+const hexColorPattern = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const allowedPaletteKeys = ["accent", "accentSoft", "booleanYes", "booleanNo", "scaleLow", "scaleHigh"] as const;
+const allowedChartStyles = ["gradient", "brush", "solid"] as const;
+type ChartStyle = (typeof allowedChartStyles)[number];
 
 function isFiveMinuteIncrement(value: unknown) {
   if (typeof value !== "string") return false;
@@ -9,6 +13,35 @@ function isFiveMinuteIncrement(value: unknown) {
   if (!match) return false;
   const minutes = Number.parseInt(match[2], 10);
   return minutes % 5 === 0;
+}
+
+function normalizeHexColor(value: unknown) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!hexColorPattern.test(trimmed)) return null;
+  const raw = trimmed.slice(1);
+  const expanded = raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw;
+  return `#${expanded.toLowerCase()}`;
+}
+
+function normalizePalette(input: unknown) {
+  if (input === undefined) return undefined; // no update requested
+  if (input === null) return null; // explicit clear
+  if (typeof input !== "object" || Array.isArray(input)) return { error: "chart_palette must be an object of hex colors." };
+
+  const palette: Record<string, string> = {};
+
+  for (const key of allowedPaletteKeys) {
+    const value = (input as Record<string, unknown>)[key];
+    if (value === undefined) continue;
+    const normalized = normalizeHexColor(value);
+    if (!normalized) {
+      return { error: `Invalid color for ${key}. Use a hex value like #336699.` };
+    }
+    palette[key] = normalized;
+  }
+
+  return palette;
 }
 
 export async function GET() {
@@ -45,7 +78,7 @@ export async function PUT(request: Request) {
   }
 
   const body = await request.json();
-  const { timezone, reminder_time, push_opt_in } = body;
+  const { timezone, reminder_time, push_opt_in, chart_palette, chart_style } = body;
 
   if (
     reminder_time !== undefined &&
@@ -58,6 +91,28 @@ export async function PUT(request: Request) {
     );
   }
 
+  const normalizedPalette = normalizePalette(chart_palette);
+  if (normalizedPalette && "error" in normalizedPalette) {
+    return NextResponse.json({ error: normalizedPalette.error }, { status: 400 });
+  }
+
+  const isValidChartStyle = (value: unknown): value is ChartStyle =>
+    typeof value === "string" && allowedChartStyles.includes(value as ChartStyle);
+
+  let normalizedChartStyle: ChartStyle | undefined;
+  if (chart_style !== undefined) {
+    if (chart_style === null) {
+      normalizedChartStyle = "gradient";
+    } else if (!isValidChartStyle(chart_style)) {
+      return NextResponse.json(
+        { error: "chart_style must be either 'gradient' (current) or 'brush'." },
+        { status: 400 },
+      );
+    } else {
+      normalizedChartStyle = chart_style;
+    }
+  }
+
   const { error } = await supabase
     .from("profiles")
     .upsert({
@@ -65,6 +120,8 @@ export async function PUT(request: Request) {
       timezone,
       reminder_time: typeof reminder_time === "string" ? reminder_time.slice(0, 5) : reminder_time,
       push_opt_in,
+      chart_palette: normalizedPalette === undefined ? undefined : normalizedPalette,
+      chart_style: normalizedChartStyle,
     })
     .select()
     .single();

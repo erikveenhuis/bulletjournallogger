@@ -1,11 +1,24 @@
 export type QuestionType = "boolean" | "number" | "scale" | "text" | "emoji";
 
+export type ChartStyle = "gradient" | "brush" | "solid";
+
 export type Profile = {
   user_id: string;
   timezone: string | null;
   reminder_time: string | null;
   push_opt_in: boolean | null;
   is_admin: boolean | null;
+  chart_palette?: ChartPalette | null;
+  chart_style?: ChartStyle | null;
+};
+
+export type ChartPalette = {
+  accent: string;
+  accentSoft: string;
+  booleanYes: string;
+  booleanNo: string;
+  scaleLow: string;
+  scaleHigh: string;
 };
 
 export type QuestionTemplate = {

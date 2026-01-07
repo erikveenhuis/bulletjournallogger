@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import InsightsChart from "./insights-chart";
+import { type ChartStyle } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,12 @@ export default async function InsightsPage() {
       </div>
     );
   }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("chart_palette, chart_style")
+    .eq("user_id", user.id)
+    .maybeSingle();
 
   const { data: answers } = await supabase
     .from("answers")
@@ -39,7 +46,11 @@ export default async function InsightsPage() {
           Download CSV
         </a>
       </div>
-      <InsightsChart answers={answers || []} />
+      <InsightsChart
+        answers={answers || []}
+        chartPalette={profile?.chart_palette as Record<string, string> | undefined}
+        chartStyle={(profile?.chart_style as ChartStyle | null) || undefined}
+      />
     </div>
   );
 }
