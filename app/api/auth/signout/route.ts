@@ -4,5 +4,6 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 export async function POST() {
   const supabase = await createServerSupabaseClient();
   await supabase.auth.signOut({ scope: "local" });
-  return NextResponse.redirect(new URL("/", process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"));
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://bulletjournallogger.up.railway.app";
+  return NextResponse.redirect(new URL("/", siteUrl));
 }

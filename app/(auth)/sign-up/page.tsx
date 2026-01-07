@@ -35,6 +35,7 @@ export default function SignUpPage() {
         return;
       }
       router.push("/dashboard");
+      router.refresh();
     } catch (err) {
       console.error(err);
       setError("Could not reach the auth service. Please check your connection and try again.");
