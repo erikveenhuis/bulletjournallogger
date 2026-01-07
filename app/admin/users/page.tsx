@@ -44,8 +44,8 @@ export default async function AdminUsersPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Admin: users</h1>
-          <p className="text-sm text-gray-600">View user profiles, timezones, and admin access.</p>
+          <h1 className="text-2xl font-semibold text-[var(--bujo-ink)]">Admin: users</h1>
+          <p className="text-sm text-[var(--bujo-subtle)]">View user profiles, timezones, and admin access.</p>
         </div>
         <Link href="/admin" className="bujo-btn-secondary text-sm">
           Back to admin

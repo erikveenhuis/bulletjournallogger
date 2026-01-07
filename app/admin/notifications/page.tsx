@@ -48,8 +48,8 @@ export default async function AdminNotificationsPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Admin: notifications</h1>
-          <p className="text-sm text-gray-600">View and prune push subscription entries.</p>
+          <h1 className="text-2xl font-semibold text-[var(--bujo-ink)]">Admin: notifications</h1>
+          <p className="text-sm text-[var(--bujo-subtle)]">View and prune push subscription entries.</p>
         </div>
         <Link href="/admin" className="bujo-btn-secondary text-sm">
           Back to admin

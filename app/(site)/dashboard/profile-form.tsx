@@ -284,14 +284,14 @@ export default function ProfileForm({
               type="button"
               onClick={() => (pushOptIn ? disablePush() : enablePush())}
               aria-pressed={pushOptIn}
-              className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors duration-200 ${
-                pushOptIn ? "bg-green-500" : "bg-gray-300"
+              className={`relative inline-flex h-[44px] w-[84px] items-center rounded-full transition-colors duration-200 ${
+                pushOptIn ? "bg-[var(--bujo-accent)]" : "bg-gray-300"
               }`}
             >
               <span className="sr-only">Toggle push reminders</span>
               <span
-                className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition duration-200 ${
-                  pushOptIn ? "translate-x-7" : "translate-x-1"
+                className={`inline-block h-9 w-9 transform rounded-full bg-white shadow transition duration-200 ${
+                  pushOptIn ? "translate-x-[44px]" : "translate-x-1"
                 }`}
               />
             </button>

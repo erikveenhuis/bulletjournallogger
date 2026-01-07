@@ -16,30 +16,30 @@ const formatDate = (value?: string | null) => {
 
 export default function UsersClient({ profiles }: Props) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="bujo-card bujo-ruled">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Users</h2>
-          <p className="text-sm text-gray-600">Latest 200 profiles.</p>
+          <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Users</h2>
+          <p className="text-sm text-[var(--bujo-subtle)]">Latest 200 profiles.</p>
         </div>
-        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700">{profiles.length} total</span>
+        <span className="bujo-chip text-xs">{profiles.length} total</span>
       </div>
       <div className="mt-3 overflow-auto">
         {profiles.length === 0 ? (
-          <p className="text-sm text-gray-600">No users found.</p>
+          <p className="text-sm text-[var(--bujo-subtle)]">No users found.</p>
         ) : (
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-2 text-left font-medium text-gray-700">User</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-700">Timezone</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-700">Reminder</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-700">Push opt-in</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-700">Admin</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-700">Created</th>
+          <table className="min-w-full divide-y divide-[var(--bujo-border)] text-sm">
+            <thead className="bg-[var(--bujo-paper)]">
+              <tr className="text-left text-[var(--bujo-ink)]">
+                <th className="px-3 py-2 font-medium">User</th>
+                <th className="px-3 py-2 font-medium">Timezone</th>
+                <th className="px-3 py-2 font-medium">Reminder</th>
+                <th className="px-3 py-2 font-medium">Push opt-in</th>
+                <th className="px-3 py-2 font-medium">Admin</th>
+                <th className="px-3 py-2 font-medium">Created</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-[var(--bujo-border)]">
               {profiles.map((p) => {
                 const reminder = p.reminder_time ? p.reminder_time.slice(0, 5) : "—";
                 const timezone = p.timezone || "UTC";
@@ -47,15 +47,13 @@ export default function UsersClient({ profiles }: Props) {
                 const isAdmin = p.is_admin ? "Yes" : "No";
                 const userLabel = `${p.user_id.slice(0, 6)}…`;
                 return (
-                  <tr key={p.user_id} className="align-top">
-                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-gray-800" title={p.user_id}>
-                      {userLabel}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-800">{timezone}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-800">{reminder}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-800">{pushOptIn}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-800">{isAdmin}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-800">{formatDate(p.created_at)}</td>
+                  <tr key={p.user_id} className="align-top text-[var(--bujo-ink)]">
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{userLabel}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs">{timezone}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs">{reminder}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs">{pushOptIn}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs">{isAdmin}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs">{formatDate(p.created_at)}</td>
                   </tr>
                 );
               })}

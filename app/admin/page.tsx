@@ -63,19 +63,16 @@ export default async function AdminHomePage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         {adminSections.map((section) => (
-          <div key={section.href} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+          <div key={section.href} className="bujo-card bujo-ruled">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">{section.title}</h2>
-                <p className="text-sm text-gray-600">{section.description}</p>
+                <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">{section.title}</h2>
+                <p className="text-sm text-[var(--bujo-subtle)]">{section.description}</p>
               </div>
-              <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700">Admin</span>
+              <span className="bujo-chip text-xs">Admin</span>
             </div>
             <div className="mt-4">
-              <Link
-                href={section.href}
-                className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-              >
+              <Link href={section.href} className="bujo-btn text-sm">
                 Open
               </Link>
             </div>

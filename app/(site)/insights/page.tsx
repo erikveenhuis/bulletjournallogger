@@ -20,7 +20,7 @@ export default async function InsightsPage() {
 
   const { data: answers } = await supabase
     .from("answers")
-    .select("*, question_templates(id,title,type)")
+    .select("*, question_templates(id,title,type,meta)")
     .eq("user_id", user.id)
     .order("question_date", { ascending: true });
 

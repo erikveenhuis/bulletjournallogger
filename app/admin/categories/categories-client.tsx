@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Category } from "@/lib/types";
+import ConfirmDialog from "@/components/confirm-dialog";
 
 type Props = {
   categories: Category[];
@@ -12,6 +13,7 @@ export default function CategoriesClient({ categories }: Props) {
   const [catDesc, setCatDesc] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [catEdits, setCatEdits] = useState<Record<string, { name: string; description: string }>>({});
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     const nextCatEdits: Record<string, { name: string; description: string }> = {};
@@ -54,81 +56,78 @@ export default function CategoriesClient({ categories }: Props) {
     window.location.reload();
   };
 
-  const deleteCategory = async (id: string) => {
+  const deleteCategory = async () => {
+    if (!pendingDeleteId) return;
     setMessage(null);
     const res = await fetch("/api/categories", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id: pendingDeleteId }),
     });
     const data = await res.json();
     if (!res.ok) {
       setMessage(data.error || "Could not delete category");
+      setPendingDeleteId(null);
       return;
     }
     setMessage("Category deleted");
+    setPendingDeleteId(null);
     window.location.reload();
   };
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-900">Add category</h2>
+      <div className="bujo-card bujo-ruled">
+        <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Add category</h2>
         <div className="mt-3 space-y-2">
           <input
             placeholder="Name"
             value={catName}
             onChange={(e) => setCatName(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="bujo-input"
           />
           <input
             placeholder="Description"
             value={catDesc}
             onChange={(e) => setCatDesc(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="bujo-input"
           />
-          <button
-            onClick={addCategory}
-            className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-          >
+          <button onClick={addCategory} className="bujo-btn w-full text-sm">
             Add category
           </button>
         </div>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-900">Manage categories</h2>
+      <div className="bujo-card bujo-ruled">
+        <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Manage categories</h2>
         <div className="mt-3 space-y-3">
           {categories.length === 0 ? (
-            <p className="text-sm text-gray-600">No categories yet.</p>
+            <p className="text-sm text-[var(--bujo-subtle)]">No categories yet.</p>
           ) : (
             categories.map((c) => (
-              <div key={c.id} className="grid gap-2 rounded-md border border-gray-100 p-3 md:grid-cols-3">
+              <div
+                key={c.id}
+                className="grid gap-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3 md:grid-cols-3"
+              >
                 <input
                   value={catEdits[c.id]?.name ?? ""}
                   onChange={(e) =>
                     setCatEdits((prev) => ({ ...prev, [c.id]: { ...prev[c.id], name: e.target.value } }))
                   }
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="bujo-input text-sm"
                 />
                 <input
                   value={catEdits[c.id]?.description ?? ""}
                   onChange={(e) =>
                     setCatEdits((prev) => ({ ...prev, [c.id]: { ...prev[c.id], description: e.target.value } }))
                   }
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="bujo-input text-sm"
                 />
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => updateCategory(c.id)}
-                    className="flex-1 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-                  >
+                  <button onClick={() => updateCategory(c.id)} className="bujo-btn flex-1 text-sm">
                     Update
                   </button>
-                  <button
-                    onClick={() => deleteCategory(c.id)}
-                    className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
-                  >
+                  <button onClick={() => setPendingDeleteId(c.id)} className="bujo-btn-danger text-sm">
                     Delete
                   </button>
                 </div>
@@ -138,7 +137,18 @@ export default function CategoriesClient({ categories }: Props) {
         </div>
       </div>
 
-      {message && <p className="text-sm text-gray-700">{message}</p>}
+      {message && <p className="bujo-message text-sm">{message}</p>}
+
+      <ConfirmDialog
+        open={!!pendingDeleteId}
+        title="Delete category?"
+        description="This will remove the category immediately."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmTone="danger"
+        onConfirm={deleteCategory}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </div>
   );
 }

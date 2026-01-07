@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Category, QuestionTemplate } from "@/lib/types";
+import ConfirmDialog from "@/components/confirm-dialog";
 
 type Props = {
   categories: Category[];
@@ -19,6 +20,7 @@ export default function AdminForms({ categories, templates }: Props) {
   const [templateEdits, setTemplateEdits] = useState<
     Record<string, { title: string; category_id: string | null; type: string; meta: string; is_active: boolean }>
   >({});
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     const nextTemplateEdits: Record<
@@ -99,38 +101,41 @@ export default function AdminForms({ categories, templates }: Props) {
     window.location.reload();
   };
 
-  const deleteTemplate = async (id: string) => {
+  const deleteTemplate = async () => {
+    if (!pendingDeleteId) return;
     setMessage(null);
     const res = await fetch("/api/question-templates", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id: pendingDeleteId }),
     });
     const data = await res.json();
     if (!res.ok) {
       setMessage(data.error || "Could not delete template");
+      setPendingDeleteId(null);
       return;
     }
     setMessage("Template deleted");
+    setPendingDeleteId(null);
     window.location.reload();
   };
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-900">Add template</h2>
+      <div className="bujo-card bujo-ruled">
+        <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Add template</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
             <input
               placeholder="Title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="bujo-input"
             />
             <select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="bujo-input"
             >
               <option value="">Select category</option>
               {categories.map((c) => (
@@ -142,7 +147,7 @@ export default function AdminForms({ categories, templates }: Props) {
             <select
               value={type}
               onChange={(e) => setType(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="bujo-input"
             >
               {questionTypes.map((t) => (
                 <option key={t} value={t}>
@@ -157,11 +162,11 @@ export default function AdminForms({ categories, templates }: Props) {
               value={meta}
               onChange={(e) => setMeta(e.target.value)}
               rows={5}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="bujo-input"
             />
             <button
               onClick={addTemplate}
-              className="w-full rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              className="bujo-btn w-full text-sm"
             >
               Add template
             </button>
@@ -169,26 +174,27 @@ export default function AdminForms({ categories, templates }: Props) {
         </div>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="bujo-card bujo-ruled">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Manage templates</h2>
-          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700">
-            {templates.length} total
-          </span>
+          <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Manage templates</h2>
+          <span className="bujo-chip text-xs">{templates.length} total</span>
         </div>
         <div className="mt-3 space-y-4">
           {templates.length === 0 ? (
-            <p className="text-sm text-gray-600">No templates yet.</p>
+            <p className="text-sm text-[var(--bujo-subtle)]">No templates yet.</p>
           ) : (
             templates.map((t) => (
-              <div key={t.id} className="space-y-2 rounded-md border border-gray-100 p-3">
+              <div
+                key={t.id}
+                className="space-y-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3"
+              >
                 <div className="grid gap-2 md:grid-cols-2">
                   <input
                     value={templateEdits[t.id]?.title ?? ""}
                     onChange={(e) =>
                       setTemplateEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], title: e.target.value } }))
                     }
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    className="bujo-input text-sm"
                   />
                   <select
                     value={templateEdits[t.id]?.category_id ?? ""}
@@ -198,7 +204,7 @@ export default function AdminForms({ categories, templates }: Props) {
                         [t.id]: { ...prev[t.id], category_id: e.target.value },
                       }))
                     }
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    className="bujo-input text-sm"
                   >
                     <option value="">Select category</option>
                     {categories.map((c) => (
@@ -214,7 +220,7 @@ export default function AdminForms({ categories, templates }: Props) {
                     onChange={(e) =>
                       setTemplateEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], type: e.target.value } }))
                     }
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    className="bujo-input text-sm"
                   >
                     {questionTypes.map((qt) => (
                       <option key={qt} value={qt}>
@@ -222,7 +228,7 @@ export default function AdminForms({ categories, templates }: Props) {
                       </option>
                     ))}
                   </select>
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <label className="flex items-center gap-2 text-sm text-[var(--bujo-ink)]">
                     <input
                       type="checkbox"
                       checked={!!templateEdits[t.id]?.is_active}
@@ -232,6 +238,7 @@ export default function AdminForms({ categories, templates }: Props) {
                           [t.id]: { ...prev[t.id], is_active: e.target.checked },
                         }))
                       }
+                      className="bujo-range"
                     />
                     Active
                   </label>
@@ -242,19 +249,13 @@ export default function AdminForms({ categories, templates }: Props) {
                     setTemplateEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], meta: e.target.value } }))
                   }
                   rows={3}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  className="bujo-input text-sm"
                 />
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => updateTemplate(t.id)}
-                    className="flex-1 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-                  >
+                  <button onClick={() => updateTemplate(t.id)} className="bujo-btn flex-1 text-sm">
                     Update
                   </button>
-                  <button
-                    onClick={() => deleteTemplate(t.id)}
-                    className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
-                  >
+                  <button onClick={() => setPendingDeleteId(t.id)} className="bujo-btn-danger text-sm">
                     Delete
                   </button>
                 </div>
@@ -264,7 +265,18 @@ export default function AdminForms({ categories, templates }: Props) {
         </div>
       </div>
 
-      {message && <p className="text-sm text-gray-700">{message}</p>}
+      {message && <p className="bujo-message text-sm">{message}</p>}
+
+      <ConfirmDialog
+        open={!!pendingDeleteId}
+        title="Delete question template?"
+        description="This will remove the template immediately."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmTone="danger"
+        onConfirm={deleteTemplate}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </div>
   );
 }

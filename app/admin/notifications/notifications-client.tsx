@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { PushSubscription } from "@/lib/types";
+import ConfirmDialog from "@/components/confirm-dialog";
 
 type Props = {
   subscriptions: PushSubscription[];
@@ -15,51 +16,55 @@ const formatDateTime = (value: string) => {
 export default function NotificationsClient({ subscriptions: initialSubscriptions }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [subscriptions, setSubscriptions] = useState<PushSubscription[]>(initialSubscriptions);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  const deleteSubscription = async (id: string) => {
+  const deleteSubscription = async () => {
+    if (!pendingDeleteId) return;
     setMessage(null);
     const res = await fetch("/api/admin/push-subscriptions", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id: pendingDeleteId }),
     });
     const data = await res.json();
     if (!res.ok) {
       setMessage(data.error || "Could not delete subscription");
+      setPendingDeleteId(null);
       return;
     }
-    setSubscriptions((prev) => prev.filter((s) => s.id !== id));
+    setSubscriptions((prev) => prev.filter((s) => s.id !== pendingDeleteId));
+    setPendingDeleteId(null);
     setMessage("Subscription removed");
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="bujo-card bujo-ruled">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Notification subscriptions</h2>
-          <p className="text-sm text-gray-600">
+          <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Notification subscriptions</h2>
+          <p className="text-sm text-[var(--bujo-subtle)]">
             Active push endpoints (latest 500). Remove stale entries when needed.
           </p>
         </div>
-        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700">{subscriptions.length} total</span>
+        <span className="bujo-chip text-xs">{subscriptions.length} total</span>
       </div>
       <div className="mt-3 overflow-auto">
         {subscriptions.length === 0 ? (
-          <p className="text-sm text-gray-600">No subscriptions found.</p>
+          <p className="text-sm text-[var(--bujo-subtle)]">No subscriptions found.</p>
         ) : (
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-2 text-left font-medium text-gray-700">User</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-700">Endpoint</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-700">Reminder</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-700">TZ</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-700">Opt-in</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-700">Created</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-700">Actions</th>
+          <table className="min-w-full divide-y divide-[var(--bujo-border)] text-sm">
+            <thead className="bg-[var(--bujo-paper)]">
+              <tr className="text-left text-[var(--bujo-ink)]">
+                <th className="px-3 py-2 font-medium">User</th>
+                <th className="px-3 py-2 font-medium">Endpoint</th>
+                <th className="px-3 py-2 font-medium">Reminder</th>
+                <th className="px-3 py-2 font-medium">TZ</th>
+                <th className="px-3 py-2 font-medium">Opt-in</th>
+                <th className="px-3 py-2 font-medium">Created</th>
+                <th className="px-3 py-2 font-medium">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-[var(--bujo-border)]">
               {subscriptions.map((sub) => {
                 const profile = Array.isArray(sub.profiles) ? sub.profiles?.[0] : sub.profiles;
                 const reminder = profile?.reminder_time ? profile.reminder_time.slice(0, 5) : "—";
@@ -68,29 +73,24 @@ export default function NotificationsClient({ subscriptions: initialSubscription
                 const endpointLabel = sub.endpoint.replace(/^https?:\/\//, "");
                 const userLabel = `${sub.user_id.slice(0, 6)}…`;
                 return (
-                  <tr key={sub.id} className="align-top">
-                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-gray-800" title={sub.user_id}>
+                  <tr key={sub.id} className="align-top text-[var(--bujo-ink)]">
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs" title={sub.user_id}>
                       {userLabel}
                     </td>
-                    <td className="max-w-[320px] px-3 py-2 text-xs text-gray-800" title={sub.endpoint}>
+                    <td className="max-w-[320px] px-3 py-2 text-xs" title={sub.endpoint}>
                       <div className="line-clamp-2 break-all">{endpointLabel}</div>
                       {sub.ua && (
-                        <div className="mt-1 line-clamp-2 text-[11px] text-gray-500" title={sub.ua}>
+                        <div className="mt-1 line-clamp-2 text-[11px] text-[var(--bujo-subtle)]" title={sub.ua}>
                           {sub.ua}
                         </div>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-800">{reminder}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-800">{timezone}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-800">{optedIn}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-800">
-                      {formatDateTime(sub.created_at)}
-                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs">{reminder}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs">{timezone}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs">{optedIn}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs">{formatDateTime(sub.created_at)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-xs">
-                      <button
-                        onClick={() => deleteSubscription(sub.id)}
-                        className="rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
-                      >
+                      <button onClick={() => setPendingDeleteId(sub.id)} className="bujo-btn-danger text-xs">
                         Delete
                       </button>
                     </td>
@@ -101,7 +101,18 @@ export default function NotificationsClient({ subscriptions: initialSubscription
           </table>
         )}
       </div>
-      {message && <p className="mt-3 text-sm text-gray-700">{message}</p>}
+      {message && <p className="mt-3 bujo-message text-sm">{message}</p>}
+
+      <ConfirmDialog
+        open={!!pendingDeleteId}
+        title="Delete subscription?"
+        description="This will remove the push subscription immediately."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmTone="danger"
+        onConfirm={deleteSubscription}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </div>
   );
 }

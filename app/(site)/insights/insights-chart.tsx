@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { Bar, Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -10,8 +11,9 @@ import {
   BarElement,
   Tooltip,
   Legend as ChartLegend,
+  type ChartOptions,
 } from "chart.js";
-import { addDays, format, startOfWeek, subWeeks } from "date-fns";
+import { addDays, format, parseISO, startOfWeek, subWeeks } from "date-fns";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, ChartLegend);
 
@@ -29,23 +31,40 @@ type AnswerRow = {
   text_value: string | null;
   created_at: string;
   updated_at: string;
-  question_templates?: { id?: string; title?: string; type?: string | null } | null;
+  question_templates?:
+    | { id?: string; title?: string; type?: string | null; meta?: Record<string, unknown> | null }
+    | null;
 };
 
 type QuestionSeries = {
   id: string;
+  templateId?: string;
+  promptSnapshot?: string | null;
+  categorySnapshot?: string | null;
   label: string;
   type: "scale" | "number" | "boolean" | "other";
   typeLabel: string;
+  unit?: string;
   points: Array<{ date: string; value: number }>;
 };
 
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const scaleColors = {
+  veryLow: "#f1edff",
+  low: "#d9ceff",
+  mid: "#b6a3ff",
+  high: "#9277ff",
+  veryHigh: "#6f3dff",
+};
 
 function toQuestionSeries(answers: AnswerRow[]): QuestionSeries[] {
   return Object.values(
     answers.reduce<Record<string, QuestionSeries>>((acc, row) => {
+      const meta = (row.question_templates?.meta as Record<string, unknown> | null) || null;
+      const metaUnit = meta?.["unit"];
+      const unit = typeof metaUnit === "string" ? metaUnit : undefined;
       const type = (row.question_templates?.type as QuestionSeries["type"]) || "other";
+      const templateId = row.template_id || undefined;
       const value =
         type === "boolean"
           ? row.bool_value === null || row.bool_value === undefined
@@ -73,7 +92,17 @@ function toQuestionSeries(answers: AnswerRow[]): QuestionSeries[] {
               : "Value";
 
       if (!acc[id]) {
-        acc[id] = { id, label, type, typeLabel, points: [] };
+        acc[id] = {
+          id,
+          templateId,
+          promptSnapshot: row.prompt_snapshot,
+          categorySnapshot: row.category_snapshot,
+          label,
+          type,
+          typeLabel,
+          unit,
+          points: [],
+        };
       }
       acc[id].points.push({ date: row.question_date, value: Number(value) });
       return acc;
@@ -107,15 +136,22 @@ function colorForValue(value: number, type: QuestionSeries["type"], maxValue: nu
     return value >= 1 ? "#2ecc71" : "#e74c3c";
   }
   if (type === "scale") {
-    if (value >= 7) return "#7c5cff";
-    if (value >= 4) return "#b6a3ff";
-    return "#e8e1ff";
+    if (value >= 9) return scaleColors.veryHigh;
+    if (value >= 7) return scaleColors.high;
+    if (value >= 5) return scaleColors.mid;
+    if (value >= 3) return scaleColors.low;
+    return scaleColors.veryLow;
   }
   // number or other — use relative scale
   if (maxValue <= 0) return "#e5e7eb";
   const ratio = Math.min(1, value / maxValue);
   const alpha = 0.2 + 0.6 * ratio;
   return `rgba(124, 92, 255, ${alpha.toFixed(2)})`;
+}
+
+function upsertPoint(points: Array<{ date: string; value: number }>, date: string, value: number) {
+  const filtered = points.filter((p) => p.date !== date);
+  return [...filtered, { date, value }].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function LegendKey({ type }: { type: QuestionSeries["type"] }) {
@@ -137,16 +173,24 @@ function LegendKey({ type }: { type: QuestionSeries["type"] }) {
     return (
       <div className="mt-2 flex items-center gap-3 text-xs text-gray-700">
         <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded-sm bg-[#e8e1ff]" />
+          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: scaleColors.veryLow }} />
+          Very low
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: scaleColors.low }} />
           Low
         </span>
         <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded-sm bg-[#b6a3ff]" />
+          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: scaleColors.mid }} />
           Mid
         </span>
         <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded-sm bg-[#7c5cff]" />
+          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: scaleColors.high }} />
           High
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: scaleColors.veryHigh }} />
+          Very high
         </span>
       </div>
     );
@@ -154,7 +198,13 @@ function LegendKey({ type }: { type: QuestionSeries["type"] }) {
   return null;
 }
 
-function QuestionCalendar({ series }: { series: QuestionSeries }) {
+function QuestionCalendar({
+  series,
+  onSelectDay,
+}: {
+  series: QuestionSeries;
+  onSelectDay: (date: string, value: number | undefined, isFuture: boolean) => void;
+}) {
   const today = new Date();
   const calendarEnd = startOfWeek(today, { weekStartsOn: 0 });
   const calendarStart = startOfWeek(subWeeks(calendarEnd, 5), { weekStartsOn: 0 });
@@ -174,9 +224,9 @@ function QuestionCalendar({ series }: { series: QuestionSeries }) {
   }
 
   return (
-    <div className="mt-3 space-y-2 overflow-x-auto">
-      <div className="min-w-[460px] space-y-2">
-        <div className="grid grid-cols-7 gap-1 text-[11px] font-semibold text-gray-600">
+    <div className="mt-3 overflow-x-auto">
+      <div className="bujo-calendar min-w-[520px] space-y-3">
+        <div className="grid grid-cols-7 gap-1 text-[11px] font-semibold text-gray-700">
           {weekdayLabels.map((w) => (
             <span key={w} className="text-center">
               {w}
@@ -189,23 +239,36 @@ function QuestionCalendar({ series }: { series: QuestionSeries }) {
             const value = valueMap[dayStr];
             const isFuture = day > today;
             const bg = value !== undefined ? colorForValue(value, series.type, maxValue) : "#f3f4f6";
-            const textColor = isFuture ? "text-gray-400" : "text-gray-800";
             const title =
               value !== undefined
                 ? series.type === "boolean"
                   ? `${dayStr}: ${value >= 1 ? "Yes" : "No"}`
                   : `${dayStr}: ${value.toFixed(1)}`
-                : dayStr;
+                : isFuture
+                  ? `${dayStr}: future dates cannot be set`
+                  : dayStr;
 
             return (
               <div
                 key={dayStr}
-                className={`flex h-12 flex-col items-center justify-center rounded border border-gray-200 ${textColor}`}
-                style={{ backgroundColor: isFuture ? "#f9fafb" : bg }}
+                className={`bujo-calendar-day h-14 ${isFuture ? "bujo-calendar-day--future" : "cursor-pointer"}`}
+                style={{
+                  background: isFuture
+                    ? "#f8f1e0"
+                    : `linear-gradient(135deg, ${bg} 0%, ${bg} 68%, rgba(255,255,255,0.92) 100%)`,
+                }}
                 title={title}
                 aria-label={title}
+                role="button"
+                onClick={() => {
+                  if (isFuture) return;
+                  onSelectDay(dayStr, value, isFuture);
+                }}
               >
-                <span className="text-xs font-semibold text-gray-800">{format(day, "d")}</span>
+                <span className="bujo-calendar-day__date text-sm">{format(day, "d")}</span>
+                <span className="bujo-calendar-day__note">
+                  {value === undefined ? "—" : series.type === "boolean" ? (value >= 1 ? "Yes" : "No") : value.toFixed(0)}
+                </span>
                 <span className="sr-only">{title}</span>
               </div>
             );
@@ -222,27 +285,334 @@ function NumberBarChart({ series }: { series: QuestionSeries }) {
   const last = daily.slice(-14);
   if (last.length === 0) return null;
 
+  const maxValue = last.reduce((m, d) => Math.max(m, d.value), 0);
+  const colors = last.map((d) => colorForValue(d.value, series.type, maxValue));
+
+  const options = useMemo<ChartOptions<"bar">>(
+    () => ({
+      responsive: true,
+      plugins: {
+        legend: {
+          labels: {
+            color: "var(--bujo-ink)",
+            font: { weight: 700 },
+          },
+        },
+        tooltip: {
+          backgroundColor: "rgba(47, 74, 61, 0.92)",
+          titleColor: "#fffbf4",
+          bodyColor: "#fffbf4",
+          borderColor: "rgba(47, 74, 61, 0.6)",
+          borderWidth: 1.2,
+        },
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: "var(--bujo-accent-ink)",
+            font: { weight: 600 },
+          },
+          grid: {
+            color: "rgba(214, 197, 170, 0.45)",
+            borderDash: [3, 6],
+            drawTicks: false,
+          },
+        },
+        y: {
+          ticks: {
+            color: "var(--bujo-accent-ink)",
+            font: { weight: 600 },
+          },
+          grid: {
+            color: "rgba(214, 197, 170, 0.35)",
+            borderDash: [3, 6],
+            drawTicks: false,
+          },
+        },
+      },
+      elements: {
+        bar: {
+          borderRadius: 8,
+          borderWidth: 1.4,
+          borderColor: "rgba(47, 74, 61, 0.55)",
+        },
+      },
+    }),
+    [],
+  );
+
   const data = {
     labels: last.map((d) => d.date.slice(5)), // show MM-DD
     datasets: [
       {
-        label: "Recent values",
+        label: series.unit ? `Recent ${series.unit}` : "Recent values",
         data: last.map((d) => d.value),
-        backgroundColor: "rgba(124, 92, 255, 0.5)",
-        borderColor: "rgb(124, 92, 255)",
+        backgroundColor: colors,
+        borderColor: colors,
       },
     ],
   };
 
   return (
-    <div className="mt-4">
-      <Bar data={data} />
+    <div className="mt-4 bujo-chart">
+      <Bar data={data} options={options} />
+    </div>
+  );
+}
+
+type ModalState = {
+  series: QuestionSeries;
+  date: string;
+  initialValue: number | undefined;
+  isFuture: boolean;
+};
+
+function DayValueModal({
+  state,
+  onClose,
+  onSave,
+  saving,
+  error,
+}: {
+  state: ModalState | null;
+  onClose: () => void;
+  onSave: (value: number | boolean | null) => void;
+  saving: boolean;
+  error: string | null;
+}) {
+  const series = state?.series;
+  const [value, setValue] = useState<number | boolean | null>(null);
+
+  useEffect(() => {
+    if (!state || !series) return;
+    if (series.type === "boolean") {
+      setValue(state.initialValue !== undefined ? state.initialValue >= 1 : false);
+    } else {
+      setValue(state.initialValue ?? null);
+    }
+  }, [series, state]);
+
+  if (!state || !series) return null;
+
+  const dateLabel = format(parseISO(state.date), "MMM d, yyyy");
+  const disableSave = saving || (series.type !== "boolean" && (value === null || value === undefined));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{dateLabel}</p>
+            <h3 className="text-lg font-semibold text-gray-900">{series.label}</h3>
+            <p className="text-xs text-gray-600">Update {series.typeLabel.toLowerCase()} for this day.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-gray-500 hover:bg-gray-100"
+            aria-label="Close modal"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {series.type === "boolean" ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${value === true ? "border-purple-500 bg-purple-50 text-purple-700" : "border-gray-200 text-gray-800"}`}
+                onClick={() => setValue(true)}
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${value === false ? "border-purple-500 bg-purple-50 text-purple-700" : "border-gray-200 text-gray-800"}`}
+                onClick={() => setValue(false)}
+              >
+                No
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">
+                {series.type === "scale" ? "Scale value (0-10)" : "Numeric value"}
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={10}
+                step={1}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                value={value ?? ""}
+                onChange={(e) => {
+                  const next = e.target.value === "" ? null : Number(e.target.value);
+                  setValue(Number.isNaN(next) ? null : next);
+                }}
+              />
+            </div>
+          )}
+
+          {state.isFuture ? (
+            <p className="rounded-md bg-yellow-50 px-3 py-2 text-xs text-yellow-700">
+              You&apos;re setting a value for a future date.
+            </p>
+          ) : null}
+
+          {!series.templateId ? (
+            <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+              Cannot save because this question is missing a template id.
+            </p>
+          ) : null}
+
+          {error ? (
+            <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
+          ) : null}
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={disableSave || !series.templateId}
+            onClick={() => onSave(value ?? null)}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm transition ${
+              disableSave || !series.templateId
+                ? "cursor-not-allowed bg-gray-300"
+                : "bg-purple-600 hover:bg-purple-700"
+            }`}
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
 export default function InsightsChart({ answers }: { answers: AnswerRow[] }) {
-  const questionSeries = toQuestionSeries(answers);
+  const questionSeries = useMemo(() => toQuestionSeries(answers), [answers]);
+  const [seriesData, setSeriesData] = useState<QuestionSeries[]>(questionSeries);
+  const [modalState, setModalState] = useState<ModalState | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const lineOptions = useMemo<ChartOptions<"line">>(
+    () => ({
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "rgba(47, 74, 61, 0.92)",
+          titleColor: "#fffbf4",
+          bodyColor: "#fffbf4",
+          borderColor: "rgba(47, 74, 61, 0.6)",
+          borderWidth: 1.2,
+        },
+      },
+      elements: {
+        line: { tension: 0.35, borderDash: [6, 4], borderWidth: 2.6 },
+        point: {
+          radius: 4.4,
+          borderWidth: 1.6,
+          backgroundColor: "#fffbf4",
+          borderColor: "var(--bujo-accent-ink)",
+          hoverRadius: 6,
+        },
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: "var(--bujo-accent-ink)",
+            font: { weight: 600 },
+          },
+          grid: {
+            color: "rgba(214, 197, 170, 0.45)",
+            borderDash: [3, 6],
+            drawTicks: false,
+          },
+        },
+        y: {
+          ticks: {
+            color: "var(--bujo-accent-ink)",
+            font: { weight: 600 },
+          },
+          grid: {
+            color: "rgba(214, 197, 170, 0.35)",
+            borderDash: [3, 6],
+            drawTicks: false,
+          },
+        },
+      },
+    }),
+    [],
+  );
+
+  useEffect(() => {
+    setSeriesData(questionSeries);
+  }, [questionSeries]);
+
+  const handleSelectDay = (series: QuestionSeries, date: string, value: number | undefined, isFuture: boolean) => {
+    setError(null);
+    setModalState({ series, date, initialValue: value, isFuture });
+  };
+
+  const handleSave = async (newValue: number | boolean | null) => {
+    if (!modalState?.series) return;
+    const series = modalState.series;
+    if (!series.templateId) {
+      setError("Cannot save because this question is missing a template id.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+
+    const payloadValue =
+      series.type === "boolean" ? Boolean(newValue) : newValue === null ? null : Number(newValue ?? 0);
+
+    const res = await fetch("/api/answers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question_date: modalState.date,
+        answers: [
+          {
+            template_id: series.templateId,
+            type: series.type,
+            value: payloadValue,
+            prompt_snapshot: series.promptSnapshot ?? series.label,
+            category_snapshot: series.categorySnapshot ?? null,
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body.error || "Failed to save value.");
+      setSaving(false);
+      return;
+    }
+
+    const numericValue =
+      series.type === "boolean" ? (payloadValue ? 1 : 0) : Number(payloadValue ?? 0);
+
+    setSeriesData((prev) =>
+      prev.map((s) =>
+        s.id === series.id ? { ...s, points: upsertPoint(s.points, modalState.date, numericValue) } : s,
+      ),
+    );
+
+    setSaving(false);
+    setModalState(null);
+  };
 
   if (questionSeries.length === 0) {
     return (
@@ -255,7 +625,7 @@ export default function InsightsChart({ answers }: { answers: AnswerRow[] }) {
 
   return (
     <div className="space-y-4">
-      {questionSeries.map((series) => (
+      {seriesData.map((series) => (
         <div key={series.id} className="bujo-card bujo-ruled">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -264,12 +634,15 @@ export default function InsightsChart({ answers }: { answers: AnswerRow[] }) {
             </div>
           </div>
 
-          <QuestionCalendar series={series} />
+          <QuestionCalendar
+            series={series}
+            onSelectDay={(date, value, isFuture) => handleSelectDay(series, date, value, isFuture)}
+          />
 
           {series.type === "number" ? (
             <NumberBarChart series={series} />
           ) : series.type === "boolean" ? null : (
-            <div className="mt-4">
+            <div className="mt-4 bujo-chart">
               <Line
                 data={{
                   labels: buildDailyAverages(series).map((d) => d.date.slice(5)),
@@ -277,16 +650,25 @@ export default function InsightsChart({ answers }: { answers: AnswerRow[] }) {
                     {
                       label: `${series.typeLabel} trend`,
                       data: buildDailyAverages(series).map((d) => d.value),
-                      borderColor: "rgb(124, 92, 255)",
-                      backgroundColor: "rgba(124, 92, 255, 0.2)",
+                      borderColor: "rgba(47, 74, 61, 0.85)",
+                      backgroundColor: "rgba(95, 139, 122, 0.18)",
                     },
                   ],
                 }}
+                options={lineOptions}
               />
             </div>
           )}
         </div>
       ))}
+
+      <DayValueModal
+        state={modalState}
+        onClose={() => setModalState(null)}
+        onSave={handleSave}
+        saving={saving}
+        error={error}
+      />
     </div>
   );
 }
