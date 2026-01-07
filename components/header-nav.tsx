@@ -19,8 +19,8 @@ export default function HeaderNav({ showAdmin, isSignedIn }: HeaderNavProps) {
   }, [pathname]);
 
   return (
-    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
-      <div className="flex justify-end sm:hidden">
+    <div className="relative flex w-full items-start justify-end gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
+      <div className="flex sm:hidden">
         <button
           type="button"
           className="inline-flex items-center gap-2 rounded-lg border border-dashed border-[#d9ccff] bg-[#f9f5ff] px-3 py-2 text-sm font-semibold text-[#3b2f64] shadow-[0_4px_0_#c4b5fd]"
@@ -52,9 +52,9 @@ export default function HeaderNav({ showAdmin, isSignedIn }: HeaderNavProps) {
 
       <nav
         id="primary-navigation"
-        className={`bujo-nav ${
+        className={`bujo-nav absolute right-0 top-full mt-2 ${
           menuOpen ? "flex" : "hidden"
-        } w-full flex-col items-stretch gap-2 text-sm font-medium text-gray-800 sm:flex sm:w-auto sm:flex-row sm:items-center sm:gap-2`}
+        } w-full flex-col items-stretch gap-2 rounded-lg border border-dashed border-[#d9ccff] bg-[#f9f5ff] p-3 text-sm font-medium text-gray-800 shadow-[0_4px_0_#c4b5fd] sm:relative sm:top-auto sm:mt-0 sm:flex sm:w-auto sm:flex-row sm:items-center sm:gap-2 sm:border-none sm:bg-transparent sm:p-0 sm:shadow-none`}
       >
         <NavLinks showAdmin={showAdmin} />
         {isSignedIn ? (

@@ -21,16 +21,12 @@ async function requireAdmin(
   return !!data?.is_admin;
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   const supabase = await createServerSupabaseClient();
-  const url = new URL(request.url);
-  const categoryId = url.searchParams.get("category_id");
-  let query = supabase.from("question_templates").select("*, categories(name), answer_types(*)");
-  if (categoryId) {
-    query = query.eq("category_id", categoryId);
-  }
-  query = query.eq("is_active", true).order("title", { ascending: true });
-  const { data, error } = await query;
+  const { data, error } = await supabase
+    .from("answer_types")
+    .select("*")
+    .order("name", { ascending: true });
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
@@ -48,16 +44,32 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { title, category_id, meta, is_active = true, answer_type_id } = body;
-  if (!answer_type_id) {
-    return NextResponse.json({ error: "answer_type_id is required" }, { status: 400 });
+  const { name, description, type, items, meta } = body;
+  const allowedTypes = ["boolean", "number", "scale", "text", "emoji", "yes_no_list"];
+  if (!type || !allowedTypes.includes(type)) {
+    return NextResponse.json({ error: "Type is required and must be one of: " + allowedTypes.join(", ") }, { status: 400 });
   }
-  const { error } = await supabase.from("question_templates").insert({
-    title,
-    category_id,
-    meta,
-    is_active,
-    answer_type_id,
+  if (items !== undefined && items !== null && !Array.isArray(items)) {
+    return NextResponse.json({ error: "Items must be an array or null" }, { status: 400 });
+  }
+  let metaJson: Record<string, unknown> = {};
+  if (meta !== undefined) {
+    if (typeof meta === "string") {
+      try {
+        metaJson = JSON.parse(meta);
+      } catch {
+        return NextResponse.json({ error: "Meta must be valid JSON" }, { status: 400 });
+      }
+    } else if (typeof meta === "object") {
+      metaJson = meta;
+    }
+  }
+  const { error } = await supabase.from("answer_types").insert({
+    name,
+    description,
+    type,
+    items: items || null,
+    meta: metaJson,
     created_by: user.id,
   });
   if (error) {
@@ -77,23 +89,45 @@ export async function PUT(request: Request) {
   }
 
   const body = await request.json();
-  const { id, title, category_id, meta, is_active, answer_type_id } = body;
+  const { id, name, description, type, items, meta } = body;
   if (!id) {
-    return NextResponse.json({ error: "Template id is required" }, { status: 400 });
+    return NextResponse.json({ error: "Answer type id is required" }, { status: 400 });
   }
-
+  const allowedTypes = ["boolean", "number", "scale", "text", "emoji", "yes_no_list"];
   const updates: Record<string, unknown> = {};
-  if (title !== undefined) updates.title = title;
-  if (category_id !== undefined) updates.category_id = category_id;
-  if (meta !== undefined) updates.meta = meta;
-  if (is_active !== undefined) updates.is_active = is_active;
-  if (answer_type_id !== undefined) updates.answer_type_id = answer_type_id;
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (type !== undefined) {
+    if (!allowedTypes.includes(type)) {
+      return NextResponse.json({ error: "Type must be one of: " + allowedTypes.join(", ") }, { status: 400 });
+    }
+    updates.type = type;
+  }
+  if (items !== undefined) {
+    if (items !== null && !Array.isArray(items)) {
+      return NextResponse.json({ error: "Items must be an array or null" }, { status: 400 });
+    }
+    updates.items = items;
+  }
+  if (meta !== undefined) {
+    let metaJson: Record<string, unknown> = {};
+    if (typeof meta === "string") {
+      try {
+        metaJson = JSON.parse(meta);
+      } catch {
+        return NextResponse.json({ error: "Meta must be valid JSON" }, { status: 400 });
+      }
+    } else if (typeof meta === "object") {
+      metaJson = meta;
+    }
+    updates.meta = metaJson;
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
-  const { error } = await supabase.from("question_templates").update(updates).eq("id", id);
+  const { error } = await supabase.from("answer_types").update(updates).eq("id", id);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
@@ -113,10 +147,10 @@ export async function DELETE(request: Request) {
   const body = await request.json();
   const { id } = body;
   if (!id) {
-    return NextResponse.json({ error: "Template id is required" }, { status: 400 });
+    return NextResponse.json({ error: "Answer type id is required" }, { status: 400 });
   }
 
-  const { error } = await supabase.from("question_templates").delete().eq("id", id);
+  const { error } = await supabase.from("answer_types").delete().eq("id", id);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }

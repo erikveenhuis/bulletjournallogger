@@ -21,7 +21,7 @@ export default async function JournalPage() {
 
   const { data: userQuestions } = await supabase
     .from("user_questions")
-    .select("*, template:question_templates(*, categories(name))")
+    .select("*, template:question_templates(*, categories(name), answer_types(*))")
     .eq("user_id", user.id)
     .eq("is_active", true)
     .order("sort_order");

@@ -1,10 +1,10 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import AdminForms from "./questions-client";
+import AnswerTypesClient from "./answer-types-client";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminQuestionsPage() {
+export default async function AdminAnswerTypesPage() {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -32,38 +32,20 @@ export default async function AdminQuestionsPage() {
     );
   }
 
-  const { data: categories } = await supabase
-    .from("categories")
-    .select("*")
-    .order("name");
-
-  const { data: answerTypes } = await supabase
-    .from("answer_types")
-    .select("*")
-    .order("name");
-
-  const { data: templates } = await supabase
-    .from("question_templates")
-    .select("*, categories(name), answer_types(*)")
-    .order("title");
+  const { data: answerTypes } = await supabase.from("answer_types").select("*").order("name");
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--bujo-ink)]">Admin: questions</h1>
-          <p className="text-sm text-[var(--bujo-subtle)]">Manage question templates.</p>
+          <h1 className="text-2xl font-semibold text-[var(--bujo-ink)]">Admin: answer types</h1>
+          <p className="text-sm text-[var(--bujo-subtle)]">Manage answer types for yes/no list questions.</p>
         </div>
         <Link href="/admin" className="bujo-btn-secondary text-sm">
           Back to admin
         </Link>
       </div>
-
-      <AdminForms
-        categories={categories || []}
-        answerTypes={answerTypes || []}
-        templates={templates || []}
-      />
+      <AnswerTypesClient answerTypes={answerTypes || []} />
     </div>
   );
 }

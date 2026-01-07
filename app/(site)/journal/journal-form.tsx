@@ -22,7 +22,7 @@ type Props = {
   userQuestions: UserQuestion[];
 };
 
-type AnswerValue = string | number | boolean | null;
+type AnswerValue = string | number | boolean | boolean[] | null;
 
 type AnswerRow = {
   template_id: string;
@@ -32,6 +32,9 @@ type AnswerRow = {
   scale_value: number | null;
   emoji_value: string | null;
   text_value: string | null;
+  question_templates?: {
+    type: string;
+  } | null;
 };
 
 type DayStatus = "full" | "partial";
@@ -71,6 +74,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
   const isValueAnswered = (value: AnswerValue) => {
     if (value === null || value === undefined) return false;
     if (typeof value === "string") return value.trim().length > 0;
+    if (Array.isArray(value)) return true; // Array means "Yes" was selected
     return true; // booleans and numbers (including 0 / false) count as answered
   };
 
@@ -104,6 +108,30 @@ export default function JournalForm({ date, userQuestions }: Props) {
         const map: Record<string, AnswerValue> = {};
         data.forEach((ans) => {
           if (!ans.template_id) return;
+          // Check if this is a yes_no_list type by looking at the template from the answer
+          const answerType = ans.question_templates?.answer_types?.type;
+          if (answerType === "yes_no_list") {
+            // For yes_no_list: if bool_value is false, it's "No"
+            // If text_value exists, parse it as JSON array (it's "Yes" with selections)
+            if (ans.bool_value === false) {
+              map[ans.template_id] = false;
+              return;
+            }
+            if (ans.text_value !== null && ans.text_value !== undefined) {
+              try {
+                const parsed = JSON.parse(ans.text_value);
+                if (Array.isArray(parsed)) {
+                  map[ans.template_id] = parsed;
+                  return;
+                }
+              } catch {
+                // If parsing fails, treat as empty array
+                map[ans.template_id] = [];
+                return;
+              }
+            }
+            return;
+          }
           if (ans.bool_value !== null && ans.bool_value !== undefined) {
             map[ans.template_id] = ans.bool_value;
             return;
@@ -228,7 +256,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
         const template = uq.template;
         return {
           template_id: uq.template_id,
-          type: template.type,
+          type: template.answer_types?.type ?? "text",
           value: valuesToUse[uq.template_id],
           prompt_snapshot: template.title,
           category_snapshot: template.categories?.name,
@@ -460,13 +488,13 @@ export default function JournalForm({ date, userQuestions }: Props) {
                     <span className={`h-2 w-2 rounded-full ${statusDotClass[status.tone]}`} />
                     {status.label}
                   </span>
-                  <span className="bujo-tag">{t.type}</span>
+                  <span className="bujo-tag">{t.answer_types?.type ?? "unknown"}</span>
                   {t.categories?.name ? (
                     <span className="bujo-tag">{t.categories.name}</span>
                   ) : null}
                 </div>
               </div>
-              {t.type === "boolean" && (
+              {t.answer_types?.type === "boolean" && (
                 <div className="flex flex-wrap items-center gap-4 text-sm text-gray-800">
                   <label className="flex items-center gap-2">
                     <input
@@ -490,7 +518,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
                   </label>
                 </div>
               )}
-              {t.type === "number" && (
+              {t.answer_types?.type === "number" && (
                 <input
                   type="number"
                   className={isWaterQuestion ? "w-full px-3 py-2" : "bujo-input"}
@@ -501,10 +529,10 @@ export default function JournalForm({ date, userQuestions }: Props) {
                   }}
                 />
               )}
-              {t.type === "scale" && (
+              {t.answer_types?.type === "scale" && (
                 <div className="flex flex-wrap items-center gap-3">
                   {(() => {
-                    const meta = (t.meta as Record<string, unknown>) || {};
+                    const meta = (t.answer_types?.meta as Record<string, unknown>) || {};
                     const min = typeof meta.min === "number" ? meta.min : 1;
                     const max = typeof meta.max === "number" ? meta.max : 5;
                     const currentValue =
@@ -527,7 +555,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
                   })()}
                 </div>
               )}
-              {t.type === "emoji" && (
+              {t.answer_types?.type === "emoji" && (
                 <select
                   className="bujo-input"
                   value={typeof values[uq.template_id] === "string" ? String(values[uq.template_id]) : ""}
@@ -537,12 +565,13 @@ export default function JournalForm({ date, userQuestions }: Props) {
                     Select
                   </option>
                   {(() => {
-                    const meta = (t.meta as Record<string, unknown>) || {};
+                    const items = t.answer_types?.items;
+                    const meta = (t.answer_types?.meta as Record<string, unknown>) || {};
                     const emojiSetRaw = (meta as Record<string, unknown>)["emoji_set"];
                     const emojiSet = Array.isArray(emojiSetRaw)
                       ? emojiSetRaw.map((e) => String(e))
                       : null;
-                    const options = emojiSet ?? ["😀", "🙂", "😐", "😞", "😡"];
+                    const options = emojiSet ?? (items && items.length > 0 ? items : ["😀", "🙂", "😐", "😞", "😡"]);
                     return options.map((emoji) => (
                       <option key={emoji} value={emoji}>
                         {emoji}
@@ -551,7 +580,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
                   })()}
                 </select>
               )}
-              {t.type === "text" && (
+              {t.answer_types?.type === "text" && (
                 <textarea
                   className="bujo-input"
                   rows={3}
@@ -559,6 +588,74 @@ export default function JournalForm({ date, userQuestions }: Props) {
                   onChange={(e) => setValue(uq.template_id, e.target.value)}
                 />
               )}
+              {t.answer_types?.type === "yes_no_list" && (() => {
+                const answerType = t.answer_types;
+                if (!answerType) {
+                  return (
+                    <p className="text-sm text-red-600">
+                      Answer type not configured. Please contact an admin.
+                    </p>
+                  );
+                }
+                const currentValue = values[uq.template_id];
+                const isYes = Array.isArray(currentValue);
+                const isNo = currentValue === false;
+                const booleanArray = Array.isArray(currentValue) ? currentValue : [];
+
+                return (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-4 text-sm text-gray-800">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name={`yesno-${uq.template_id}`}
+                          className="h-4 w-4 accent-[#7c5cff]"
+                          checked={isYes}
+                          onChange={() => {
+                            // Initialize with all false values
+                            const items = answerType.items || [];
+                            setValue(uq.template_id, new Array(items.length).fill(false));
+                          }}
+                        />
+                        Yes
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name={`yesno-${uq.template_id}`}
+                          className="h-4 w-4 accent-[#7c5cff]"
+                          checked={isNo}
+                          onChange={() => setValue(uq.template_id, false)}
+                        />
+                        No
+                      </label>
+                    </div>
+                    {isYes && (
+                      <div className="space-y-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3">
+                        {answerType.items.map((item, index) => (
+                          <label key={index} className="flex items-center gap-2 text-sm text-gray-800">
+                            <input
+                              type="checkbox"
+                              checked={booleanArray[index] === true}
+                              onChange={(e) => {
+                                const newArray = [...booleanArray];
+                                // Ensure array is long enough
+                                while (newArray.length <= index) {
+                                  newArray.push(false);
+                                }
+                                newArray[index] = e.target.checked;
+                                setValue(uq.template_id, newArray);
+                              }}
+                              className="h-4 w-4 accent-[#7c5cff]"
+                            />
+                            {item}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}

@@ -1,24 +1,32 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Category, QuestionTemplate } from "@/lib/types";
+import type { AnswerType, Category, QuestionTemplate } from "@/lib/types";
 import ConfirmDialog from "@/components/confirm-dialog";
 
 type Props = {
   categories: Category[];
+  answerTypes: AnswerType[];
   templates: QuestionTemplate[];
 };
 
-const questionTypes = ["boolean", "number", "scale", "text", "emoji"];
-
-export default function AdminForms({ categories, templates }: Props) {
+export default function AdminForms({ categories, answerTypes, templates }: Props) {
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [type, setType] = useState("boolean");
+  const [answerTypeId, setAnswerTypeId] = useState("");
   const [meta, setMeta] = useState("{}");
   const [message, setMessage] = useState<string | null>(null);
   const [templateEdits, setTemplateEdits] = useState<
-    Record<string, { title: string; category_id: string | null; type: string; meta: string; is_active: boolean }>
+    Record<
+      string,
+      {
+        title: string;
+        category_id: string | null;
+        meta: string;
+        is_active: boolean;
+        answer_type_id: string;
+      }
+    >
   >({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -29,28 +37,41 @@ export default function AdminForms({ categories, templates }: Props) {
     return match?.name ?? "";
   };
 
+  const answerTypeNameById = (id: string | null) => {
+    if (!id) return "";
+    const match = answerTypes.find((at) => at.id === id);
+    return match?.name ?? "";
+  };
+
   const filteredTemplates = templates.filter((t) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return (
       t.title.toLowerCase().includes(q) ||
       categoryNameById(t.category_id)?.toLowerCase().includes(q) ||
-      t.type.toLowerCase().includes(q)
+      answerTypeNameById(t.answer_type_id)?.toLowerCase().includes(q) ||
+      (t.answer_types?.type ?? "").toLowerCase().includes(q)
     );
   });
 
   useEffect(() => {
     const nextTemplateEdits: Record<
       string,
-      { title: string; category_id: string | null; type: string; meta: string; is_active: boolean }
+      {
+        title: string;
+        category_id: string | null;
+        meta: string;
+        is_active: boolean;
+        answer_type_id: string;
+      }
     > = {};
     templates.forEach((t) => {
       nextTemplateEdits[t.id] = {
         title: t.title,
         category_id: t.category_id ?? "",
-        type: t.type,
         meta: JSON.stringify(t.meta ?? {}),
         is_active: !!t.is_active,
+        answer_type_id: t.answer_type_id,
       };
     });
     setTemplateEdits(nextTemplateEdits);
@@ -58,6 +79,10 @@ export default function AdminForms({ categories, templates }: Props) {
 
   const addTemplate = async () => {
     setMessage(null);
+    if (!answerTypeId) {
+      setMessage("Answer type is required");
+      return;
+    }
     let metaJson: Record<string, unknown> = {};
     try {
       metaJson = JSON.parse(meta || "{}");
@@ -71,8 +96,8 @@ export default function AdminForms({ categories, templates }: Props) {
       body: JSON.stringify({
         title,
         category_id: categoryId || null,
-        type,
         meta: metaJson,
+        answer_type_id: answerTypeId,
       }),
     });
     const data = await res.json();
@@ -81,6 +106,10 @@ export default function AdminForms({ categories, templates }: Props) {
       return;
     }
     setMessage("Template added");
+    setTitle("");
+    setCategoryId("");
+    setAnswerTypeId("");
+    setMeta("{}");
     window.location.reload();
   };
 
@@ -88,6 +117,10 @@ export default function AdminForms({ categories, templates }: Props) {
     setMessage(null);
     const edit = templateEdits[id];
     if (!edit) return;
+    if (!edit.answer_type_id) {
+      setMessage("Answer type is required");
+      return;
+    }
 
     let metaJson: Record<string, unknown> = {};
     try {
@@ -104,9 +137,9 @@ export default function AdminForms({ categories, templates }: Props) {
         id,
         title: edit.title,
         category_id: edit.category_id || null,
-        type: edit.type,
         meta: metaJson,
         is_active: edit.is_active,
+        answer_type_id: edit.answer_type_id,
       }),
     });
     const data = await res.json();
@@ -162,20 +195,21 @@ export default function AdminForms({ categories, templates }: Props) {
               ))}
             </select>
             <select
-              value={type}
-              onChange={(e) => setType(e.target.value)}
+              value={answerTypeId}
+              onChange={(e) => setAnswerTypeId(e.target.value)}
               className="bujo-input"
             >
-              {questionTypes.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+              <option value="">Select answer type (required)</option>
+              {answerTypes.map((at) => (
+                <option key={at.id} value={at.id}>
+                  {at.name} ({at.type})
                 </option>
               ))}
             </select>
           </div>
           <div className="space-y-2">
             <textarea
-              placeholder='Meta JSON e.g. {"min":1,"max":5,"emoji_set":["😀","🙂"]}'
+              placeholder='Meta JSON e.g. {}'
               value={meta}
               onChange={(e) => setMeta(e.target.value)}
               rows={5}
@@ -202,7 +236,7 @@ export default function AdminForms({ categories, templates }: Props) {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter by title, category, or type"
+            placeholder="Filter by title, category, or answer type"
             className="bujo-input w-full max-w-xs text-sm"
           />
         </div>
@@ -243,15 +277,19 @@ export default function AdminForms({ categories, templates }: Props) {
                 </div>
                 <div className="grid gap-2 md:grid-cols-2">
                   <select
-                    value={templateEdits[t.id]?.type ?? "boolean"}
+                    value={templateEdits[t.id]?.answer_type_id ?? ""}
                     onChange={(e) =>
-                      setTemplateEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], type: e.target.value } }))
+                      setTemplateEdits((prev) => ({
+                        ...prev,
+                        [t.id]: { ...prev[t.id], answer_type_id: e.target.value },
+                      }))
                     }
                     className="bujo-input text-sm"
                   >
-                    {questionTypes.map((qt) => (
-                      <option key={qt} value={qt}>
-                        {qt}
+                    <option value="">Select answer type (required)</option>
+                    {answerTypes.map((at) => (
+                      <option key={at.id} value={at.id}>
+                        {at.name} ({at.type})
                       </option>
                     ))}
                   </select>
@@ -270,6 +308,12 @@ export default function AdminForms({ categories, templates }: Props) {
                     Active
                   </label>
                 </div>
+                {t.answer_types && (
+                  <div className="flex items-center gap-2 text-xs text-[var(--bujo-subtle)]">
+                    <span className="bujo-chip">Type: {t.answer_types.type}</span>
+                    <span className="bujo-chip">Answer Type: {t.answer_types.name}</span>
+                  </div>
+                )}
                 <textarea
                   value={templateEdits[t.id]?.meta ?? "{}"}
                   onChange={(e) =>

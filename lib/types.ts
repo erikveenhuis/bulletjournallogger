@@ -1,4 +1,6 @@
-export type QuestionType = "boolean" | "number" | "scale" | "text" | "emoji";
+// Legacy type - kept for backward compatibility during migration
+// Use AnswerType.type instead
+export type QuestionType = "boolean" | "number" | "scale" | "text" | "emoji" | "yes_no_list";
 
 export type ChartStyle = "gradient" | "brush" | "solid";
 
@@ -28,16 +30,28 @@ export type ChartPalette = {
   scaleHigh: string;
 };
 
+export type AnswerType = {
+  id: string;
+  name: string;
+  description: string | null;
+  type: "boolean" | "number" | "scale" | "text" | "emoji" | "yes_no_list";
+  items: string[] | null;
+  meta: Record<string, unknown> | null;
+  created_by: string | null;
+  created_at: string | null;
+};
+
 export type QuestionTemplate = {
   id: string;
   category_id: string | null;
   title: string;
-  type: QuestionType;
   meta: Record<string, unknown> | null;
   is_active: boolean | null;
+  answer_type_id: string;
   categories?: {
     name: string;
   } | null;
+  answer_types?: AnswerType | null;
 };
 
 export type UserQuestion = {

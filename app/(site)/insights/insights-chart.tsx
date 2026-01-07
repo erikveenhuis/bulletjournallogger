@@ -33,7 +33,11 @@ type AnswerRow = {
   created_at: string;
   updated_at: string;
   question_templates?:
-    | { id?: string; title?: string; type?: string | null; meta?: Record<string, unknown> | null }
+    | {
+        id?: string;
+        title?: string;
+        answer_types?: { type?: string | null; meta?: Record<string, unknown> | null } | null;
+      }
     | null;
 };
 
@@ -132,7 +136,7 @@ function buildScaleColors(palette: ChartPalette): ScaleColors {
 function toQuestionSeries(answers: AnswerRow[]): QuestionSeries[] {
   return Object.values(
     answers.reduce<Record<string, QuestionSeries>>((acc, row) => {
-      const meta = (row.question_templates?.meta as Record<string, unknown> | null) || null;
+      const meta = (row.question_templates?.answer_types?.meta as Record<string, unknown> | null) || null;
       const metaUnit = meta?.["unit"];
       const metaMin = meta?.["min"];
       const metaMax = meta?.["max"];
@@ -146,7 +150,7 @@ function toQuestionSeries(answers: AnswerRow[]): QuestionSeries[] {
             ? { min: scaleMinValue, max: scaleMaxValue }
             : { min: scaleMinValue, max: scaleMinValue + 4 }
           : { min: 1, max: 5 };
-      const type = (row.question_templates?.type as QuestionSeries["type"]) || "other";
+      const type = (row.question_templates?.answer_types?.type as QuestionSeries["type"]) || "other";
       const templateId = row.template_id || undefined;
       const value =
         type === "boolean"

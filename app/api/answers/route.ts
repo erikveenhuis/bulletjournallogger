@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   const end = url.searchParams.get("end");
   let query = supabase
     .from("answers")
-    .select("*, question_templates(title,type,category_id, categories(name))")
+    .select("*, question_templates(title,category_id, categories(name), answer_types(*))")
     .eq("user_id", user.id)
     .order("question_date", { ascending: false });
   if (start) query = query.gte("question_date", start);
@@ -59,6 +59,20 @@ export async function POST(request: Request) {
     switch (a.type) {
       case "boolean":
         return { ...base, bool_value: !!a.value };
+      case "yes_no_list":
+        // If value is false or null, store as bool_value: false
+        // If value is true or an array, store JSON array in text_value
+        if (a.value === false || a.value === null) {
+          return { ...base, bool_value: false };
+        }
+        if (Array.isArray(a.value)) {
+          return { ...base, text_value: JSON.stringify(a.value) };
+        }
+        // If value is true but not an array yet, store empty array
+        if (a.value === true) {
+          return { ...base, text_value: JSON.stringify([]) };
+        }
+        return { ...base, text_value: JSON.stringify(a.value) };
       case "number":
         return { ...base, number_value: Number(a.value) };
       case "scale":

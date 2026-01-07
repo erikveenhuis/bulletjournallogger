@@ -40,7 +40,7 @@ export default function SelectedQuestions({ userQuestions }: Props) {
           >
             <div>
               <p className="text-sm font-semibold text-[var(--bujo-ink)]">{u.custom_label || u.template.title}</p>
-              <p className="text-xs text-[var(--bujo-subtle)]">{u.template.type} • {u.template.categories?.name}</p>
+              <p className="text-xs text-[var(--bujo-subtle)]">{u.template.answer_types?.type ?? "unknown"} • {u.template.categories?.name}</p>
             </div>
             <button onClick={() => setPendingRemoveId(u.id)} className="bujo-btn-danger w-full justify-center text-xs sm:w-auto">
               Remove

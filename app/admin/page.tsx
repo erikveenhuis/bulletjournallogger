@@ -15,6 +15,11 @@ const adminSections = [
     description: "Manage question templates and their metadata.",
   },
   {
+    href: "/admin/answer-types",
+    title: "Answer Types",
+    description: "Manage answer types for yes/no list questions.",
+  },
+  {
     href: "/admin/users",
     title: "Users",
     description: "Review user profiles, timezones, and admin access.",

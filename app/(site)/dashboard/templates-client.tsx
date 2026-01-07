@@ -74,7 +74,7 @@ export default function TemplatesClient({
               <div>
                 <p className="text-sm font-semibold text-gray-900">{t.title}</p>
                 <p className="text-xs text-gray-600">
-                  {t.type} •{" "}
+                  {t.answer_types?.type ?? "unknown"} •{" "}
                   {categories.find((c) => c.id === t.category_id)?.name ||
                     "Uncategorized"}
                 </p>
