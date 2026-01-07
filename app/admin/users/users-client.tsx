@@ -101,7 +101,7 @@ export default function UsersClient({ profiles, currentUserId }: Props) {
                 const created = formatDate(p.auth_created_at || p.created_at);
                 const isSelf = p.user_id === currentUserId;
                 const actionLabel = p.is_admin ? "Remove admin" : "Make admin";
-                const disableAction = pendingId === p.user_id || (isSelf && p.is_admin);
+                const disableAction = pendingId === p.user_id || (isSelf && p.is_admin === true);
                 const userIdLabel = `${p.user_id.slice(0, 6)}…${p.user_id.slice(-4)}`;
                 return (
                   <tr key={p.user_id} className="align-top text-[var(--bujo-ink)]">

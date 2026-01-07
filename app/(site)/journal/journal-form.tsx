@@ -32,9 +32,13 @@ type AnswerRow = {
   scale_value: number | null;
   emoji_value: string | null;
   text_value: string | null;
-  question_templates?: {
-    type: string;
-  } | null;
+  question_templates?:
+    | {
+        id?: string;
+        title?: string;
+        answer_types?: { type?: string | null; meta?: Record<string, unknown> | null } | null;
+      }
+    | null;
 };
 
 type DayStatus = "full" | "partial";
@@ -597,6 +601,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
                     </p>
                   );
                 }
+                const items = Array.isArray(answerType.items) ? answerType.items : [];
                 const currentValue = values[uq.template_id];
                 const isYes = Array.isArray(currentValue);
                 const isNo = currentValue === false;
@@ -613,7 +618,6 @@ export default function JournalForm({ date, userQuestions }: Props) {
                           checked={isYes}
                           onChange={() => {
                             // Initialize with all false values
-                            const items = answerType.items || [];
                             setValue(uq.template_id, new Array(items.length).fill(false));
                           }}
                         />
@@ -632,7 +636,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
                     </div>
                     {isYes && (
                       <div className="space-y-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3">
-                        {answerType.items.map((item, index) => (
+                        {items.map((item, index) => (
                           <label key={index} className="flex items-center gap-2 text-sm text-gray-800">
                             <input
                               type="checkbox"
