@@ -12,6 +12,7 @@ import {
   Tooltip,
   Legend as ChartLegend,
   type ChartOptions,
+  type ScaleOptionsByType,
 } from "chart.js";
 import { addDays, format, parseISO, startOfWeek, subWeeks } from "date-fns";
 import { type ChartPalette, type ChartStyle } from "@/lib/types";
@@ -869,10 +870,13 @@ export default function InsightsChart({
                   const verticalPadding = series.type === "scale" ? 0.35 : 0;
                   const yMin = yMinBase !== undefined ? Math.max(0, yMinBase - verticalPadding) : undefined;
                   const yMax = yMaxBase !== undefined ? yMaxBase + verticalPadding : undefined;
+                  const baseStepSize = (
+                    baseLineOptions.scales?.y as ScaleOptionsByType["linear"] | undefined
+                  )?.ticks?.stepSize;
                   const stepSize =
                     series.type === "scale" && yMinBase !== undefined && yMaxBase !== undefined
                       ? Math.max(1, Math.round((yMaxBase - yMinBase) / 4))
-                      : baseLineOptions.scales?.y?.ticks?.stepSize;
+                      : baseStepSize;
                   const tickCallback =
                     series.type === "scale"
                       ? (value: string | number) => {
