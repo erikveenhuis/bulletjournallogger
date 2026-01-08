@@ -8,9 +8,10 @@ import NavLinks from "@/components/nav-links";
 type HeaderNavProps = {
   showAdmin: boolean;
   isSignedIn: boolean;
+  isImpersonating?: boolean;
 };
 
-export default function HeaderNav({ showAdmin, isSignedIn }: HeaderNavProps) {
+export default function HeaderNav({ showAdmin, isSignedIn, isImpersonating }: HeaderNavProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
 
@@ -56,7 +57,7 @@ export default function HeaderNav({ showAdmin, isSignedIn }: HeaderNavProps) {
           menuOpen ? "flex" : "hidden"
         } w-full flex-col items-stretch gap-2 rounded-lg border border-dashed border-[#d9ccff] bg-[#f9f5ff] p-3 text-sm font-medium text-gray-800 shadow-[0_4px_0_#c4b5fd] sm:relative sm:top-auto sm:mt-0 sm:flex sm:w-auto sm:flex-row sm:items-center sm:gap-2 sm:border-none sm:bg-transparent sm:p-0 sm:shadow-none`}
       >
-        <NavLinks showAdmin={showAdmin} />
+        <NavLinks showAdmin={showAdmin} isImpersonating={isImpersonating} />
         {isSignedIn ? (
           <form action="/api/auth/signout" method="post" className="w-full sm:w-auto">
             <button

@@ -1,10 +1,17 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import AdminForms from "./questions-client";
+import QuestionForm from "../../question-form";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { QuestionTemplate } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminQuestionsPage() {
+type Params = {
+  params: {
+    id: string;
+  };
+};
+
+export default async function AdminQuestionEditPage({ params }: Params) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -32,6 +39,20 @@ export default async function AdminQuestionsPage() {
     );
   }
 
+  const { data: questionTemplate } = await supabase
+    .from("question_templates")
+    .select("*, categories(name), answer_types(*)")
+    .eq("id", params.id)
+    .maybeSingle();
+
+  if (!questionTemplate) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+        Question template not found.
+      </div>
+    );
+  }
+
   const { data: categories } = await supabase
     .from("categories")
     .select("*")
@@ -42,32 +63,25 @@ export default async function AdminQuestionsPage() {
     .select("*")
     .order("name");
 
-  const { data: templates } = await supabase
-    .from("question_templates")
-    .select("*, categories(name), answer_types(*)")
-    .order("title");
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--bujo-ink)]">Admin: questions</h1>
-          <p className="text-sm text-[var(--bujo-subtle)]">Manage question templates.</p>
+          <h1 className="text-2xl font-semibold text-[var(--bujo-ink)]">Edit question</h1>
+          <p className="text-sm text-[var(--bujo-subtle)]">Update question template and preview display options.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/admin" className="bujo-btn-secondary text-sm">
-            Back to admin
-          </Link>
-          <Link href="/admin/questions/new" className="bujo-btn text-sm">
-            Add question
+        <div className="flex gap-2">
+          <Link href="/admin/questions" className="bujo-btn-secondary text-sm">
+            Back to questions
           </Link>
         </div>
       </div>
 
-      <AdminForms
+      <QuestionForm
+        mode="edit"
+        initialData={questionTemplate as QuestionTemplate}
         categories={categories || []}
         answerTypes={answerTypes || []}
-        templates={templates || []}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getEffectiveUser, getEffectiveSupabaseClient } from "@/lib/auth";
 import type { UserQuestion } from "@/lib/types";
 import Link from "next/link";
 import JournalForm from "./journal-form";
@@ -6,12 +6,11 @@ import JournalForm from "./journal-form";
 export const dynamic = "force-dynamic";
 
 export default async function JournalPage() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getEffectiveSupabaseClient();
+  const { user: effectiveUser } = await getEffectiveUser();
 
-  if (!user) {
+
+  if (!effectiveUser) {
     return (
       <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
         Please <Link href="/sign-in">sign in</Link> to log your answers.
@@ -22,7 +21,7 @@ export default async function JournalPage() {
   const { data: userQuestions } = await supabase
     .from("user_questions")
     .select("*, template:question_templates(*, categories(name), answer_types(*))")
-    .eq("user_id", user.id)
+    .eq("user_id", effectiveUser.id)
     .eq("is_active", true)
     .order("sort_order");
 

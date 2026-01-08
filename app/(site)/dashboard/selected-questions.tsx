@@ -16,10 +16,21 @@ type OverrideEdit = {
 };
 
 export default function SelectedQuestions({ userQuestions, answerTypes }: Props) {
-  const validUserQuestions = userQuestions.filter(
-    (u): u is UserQuestion & { template: NonNullable<UserQuestion["template"]> } => !!u.template,
-  );
+  const validUserQuestions = userQuestions
+    .filter(
+      (u): u is UserQuestion & { template: NonNullable<UserQuestion["template"]> } => !!u.template,
+    )
+    .filter((u) => {
+      const answerType = u.answer_type_override || u.template.answer_types;
+      return !!answerType; // Must have a valid answer type
+    });
   const missingTemplateQuestions = userQuestions.filter((u) => !u.template);
+  const invalidAnswerTypeQuestions = userQuestions
+    .filter((u): u is UserQuestion & { template: NonNullable<UserQuestion["template"]> } => !!u.template)
+    .filter((u) => {
+      const answerType = u.answer_type_override || u.template.answer_types;
+      return !answerType; // Missing valid answer type
+    });
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
   const [overrides, setOverrides] = useState<Record<string, OverrideEdit>>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -233,6 +244,23 @@ export default function SelectedQuestions({ userQuestions, answerTypes }: Props)
             <div>
               <p className="text-sm font-semibold text-red-900">{u.custom_label || "Missing template"}</p>
               <p className="text-xs text-red-800">This template was removed. Remove to clean up.</p>
+            </div>
+            <button
+              onClick={() => setPendingRemoveId(u.id)}
+              className="bujo-btn-danger text-xs"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        {invalidAnswerTypeQuestions.map((u) => (
+          <div
+            key={u.id}
+            className="flex items-center justify-between gap-3 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2"
+          >
+            <div>
+              <p className="text-sm font-semibold text-yellow-900">{u.custom_label || u.template.title}</p>
+              <p className="text-xs text-yellow-800">This question has an invalid answer type. Contact an admin to fix.</p>
             </div>
             <button
               onClick={() => setPendingRemoveId(u.id)}

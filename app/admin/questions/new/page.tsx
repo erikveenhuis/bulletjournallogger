@@ -1,10 +1,10 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import AdminForms from "./questions-client";
+import QuestionForm from "../question-form";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminQuestionsPage() {
+export default async function AdminQuestionCreatePage() {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -42,32 +42,24 @@ export default async function AdminQuestionsPage() {
     .select("*")
     .order("name");
 
-  const { data: templates } = await supabase
-    .from("question_templates")
-    .select("*, categories(name), answer_types(*)")
-    .order("title");
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--bujo-ink)]">Admin: questions</h1>
-          <p className="text-sm text-[var(--bujo-subtle)]">Manage question templates.</p>
+          <h1 className="text-2xl font-semibold text-[var(--bujo-ink)]">Add question</h1>
+          <p className="text-sm text-[var(--bujo-subtle)]">Create a new question template.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/admin" className="bujo-btn-secondary text-sm">
-            Back to admin
-          </Link>
-          <Link href="/admin/questions/new" className="bujo-btn text-sm">
-            Add question
+        <div className="flex gap-2">
+          <Link href="/admin/questions" className="bujo-btn-secondary text-sm">
+            Back to questions
           </Link>
         </div>
       </div>
 
-      <AdminForms
+      <QuestionForm
+        mode="create"
         categories={categories || []}
         answerTypes={answerTypes || []}
-        templates={templates || []}
       />
     </div>
   );

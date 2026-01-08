@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getEffectiveUser, getEffectiveSupabaseClient } from "@/lib/auth";
 import { AnswerType, QuestionTemplate, UserQuestion } from "@/lib/types";
 import Link from "next/link";
 import ProfileForm from "./profile-form";
@@ -8,12 +8,10 @@ import SelectedQuestions from "./selected-questions";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getEffectiveSupabaseClient();
+  const { user: effectiveUser } = await getEffectiveUser();
 
-  if (!user) {
+  if (!effectiveUser) {
     return (
       <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
         Please <Link href="/sign-in">sign in</Link> to manage your questions.
@@ -24,7 +22,7 @@ export default async function DashboardPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("user_id", effectiveUser.id)
     .maybeSingle();
 
   const { data: categories } = await supabase
@@ -45,7 +43,7 @@ export default async function DashboardPage() {
     .select(
       "*, template:question_templates(*, categories(name), answer_types(*)), answer_type_override:answer_types!answer_type_override_id(*)",
     )
-    .eq("user_id", user.id)
+    .eq("user_id", effectiveUser.id)
     .eq("is_active", true)
     .order("sort_order");
 

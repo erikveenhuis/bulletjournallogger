@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getEffectiveUser, getEffectiveSupabaseClient } from "@/lib/auth";
 
 async function requireUser() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getEffectiveSupabaseClient();
+  const { user } = await getEffectiveUser();
   return { supabase, user };
 }
 

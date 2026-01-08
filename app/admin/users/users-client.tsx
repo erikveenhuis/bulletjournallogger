@@ -56,6 +56,28 @@ export default function UsersClient({ profiles, currentUserId }: Props) {
     setPendingId(null);
   };
 
+  const becomeUser = async (userId: string) => {
+    setPendingId(userId);
+    setMessage(null);
+    const res = await fetch("/api/admin/impersonate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "start", targetUserId: userId }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setMessage(data.error || "Could not start impersonation.");
+      setPendingId(null);
+      return;
+    }
+    setMessage("Impersonation started. You are now viewing as this user.");
+    setPendingId(null);
+    // Reload the page after a short delay to show the message
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+  };
+
   return (
     <div className="bujo-card bujo-torn">
       <div className="flex items-center justify-between gap-2">
@@ -117,15 +139,28 @@ export default function UsersClient({ profiles, currentUserId }: Props) {
                     <td className="whitespace-nowrap px-3 py-2 text-xs">{isAdmin}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-xs">{created}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-xs">{formatDateTime(p.last_sign_in_at)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs">
-                      {isSelf && <span className="mr-2 text-[11px] text-[var(--bujo-subtle)]">You</span>}
-                      <button
-                        onClick={() => toggleAdmin(p.user_id, !p.is_admin)}
-                        disabled={disableAction}
-                        className="bujo-btn-secondary text-xs disabled:opacity-60"
-                      >
-                        {pendingId === p.user_id ? "Saving..." : actionLabel}
-                      </button>
+                    <td className="min-w-[200px] px-3 py-2 text-xs">
+                      <div className="flex flex-col gap-1">
+                        {isSelf && <span className="text-[11px] text-[var(--bujo-subtle)]">You</span>}
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => toggleAdmin(p.user_id, !p.is_admin)}
+                            disabled={disableAction}
+                            className="bujo-btn-secondary text-xs disabled:opacity-60"
+                          >
+                            {pendingId === p.user_id ? "Saving..." : actionLabel}
+                          </button>
+                          {!isSelf && (
+                            <button
+                              onClick={() => becomeUser(p.user_id)}
+                              disabled={pendingId === p.user_id}
+                              className="bujo-btn-secondary text-xs bg-blue-100 text-blue-800 hover:bg-blue-200 disabled:opacity-60"
+                            >
+                              {pendingId === p.user_id ? "Becoming..." : "Become User"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 );

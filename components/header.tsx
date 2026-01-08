@@ -1,15 +1,11 @@
 import Link from "next/link";
 import HeaderNav from "@/components/header-nav";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getEffectiveAdminStatus, getEffectiveUser, isImpersonating } from "@/lib/auth";
 
 export default async function Header() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { data: profile } = user
-    ? await supabase.from("profiles").select("is_admin").eq("user_id", user.id).maybeSingle()
-    : { data: null };
+  const { user: effectiveUser } = await getEffectiveUser();
+  const isEffectiveAdmin = await getEffectiveAdminStatus();
+  const isCurrentlyImpersonating = await isImpersonating();
 
   return (
     <header className="bujo-header">
@@ -17,7 +13,11 @@ export default async function Header() {
         <Link href="/" className="bujo-brand text-sm">
           Bullet Journal Logger
         </Link>
-        <HeaderNav showAdmin={!!profile?.is_admin} isSignedIn={!!user} />
+        <HeaderNav
+          showAdmin={isEffectiveAdmin}
+          isSignedIn={!!effectiveUser}
+          isImpersonating={isCurrentlyImpersonating}
+        />
       </div>
     </header>
   );

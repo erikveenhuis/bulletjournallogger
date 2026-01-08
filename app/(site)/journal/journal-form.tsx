@@ -56,14 +56,17 @@ export default function JournalForm({ date, userQuestions }: Props) {
   const [hasUserEdited, setHasUserEdited] = useState(false);
   const [lastSavedValues, setLastSavedValues] = useState<Record<string, AnswerValue>>({});
 
-  // Only work with questions that still have an attached template (can be null if deleted).
-  const validUserQuestions = useMemo(
-    () =>
-      userQuestions.filter(
+  // Only work with questions that still have an attached template and valid answer type.
+  const validUserQuestions = useMemo(() => {
+    return userQuestions
+      .filter(
         (uq): uq is UserQuestion & { template: NonNullable<UserQuestion["template"]> } => !!uq.template,
-      ),
-    [userQuestions],
-  );
+      )
+      .filter((uq) => {
+        const answerType = uq.answer_type_override || uq.template.answer_types;
+        return !!answerType; // Must have a valid answer type
+      });
+  }, [userQuestions]);
   const validTemplateIds = useMemo(() => validUserQuestions.map((uq) => uq.template_id), [validUserQuestions]);
 
   const getAnswerTypeForQuestion = (uq: UserQuestion & { template: NonNullable<UserQuestion["template"]> }) =>
@@ -213,7 +216,6 @@ export default function JournalForm({ date, userQuestions }: Props) {
         Object.entries(counts).forEach(([dateKey, templateSet]) => {
           statusMap[dateKey] = templateSet.size >= validTemplateIds.length ? "full" : "partial";
         });
-
         setAnsweredDates(statusMap);
       } catch (error) {
         setError("Could not load calendar status.");
@@ -328,7 +330,12 @@ export default function JournalForm({ date, userQuestions }: Props) {
     if (differs) {
       return { label: "Unsaved changes", tone: "warn" as const };
     }
-    return { label: "Saved", tone: "success" as const };
+    // Only show "Saved" if the question has been answered
+    if (isValueAnswered(saved)) {
+      return { label: "Saved", tone: "success" as const };
+    }
+    // Return null for unanswered questions to hide the status indicator
+    return null;
   };
 
   const statusToneClass = {
@@ -491,12 +498,14 @@ export default function JournalForm({ date, userQuestions }: Props) {
                   {prompt}
                 </p>
                 <div className="flex flex-wrap gap-2 text-xs">
-                  <span
-                    className={`inline-flex items-center gap-2 rounded-full px-2 py-0.5 ${statusToneClass[status.tone]}`}
-                  >
-                    <span className={`h-2 w-2 rounded-full ${statusDotClass[status.tone]}`} />
-                    {status.label}
-                  </span>
+                  {status && (
+                    <span
+                      className={`inline-flex items-center gap-2 rounded-full px-2 py-0.5 ${statusToneClass[status.tone]}`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${statusDotClass[status.tone]}`} />
+                      {status.label}
+                    </span>
+                  )}
                   <span className="bujo-tag">{answerType?.type ?? "unknown"}</span>
                   {t.categories?.name ? (
                     <span className="bujo-tag">{t.categories.name}</span>

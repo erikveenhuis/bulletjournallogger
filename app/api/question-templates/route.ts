@@ -66,10 +66,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "answer_type_id is required" }, { status: 400 });
   }
 
+  // Validate that the answer_type_id exists
+  const { data: answerType, error: answerTypeError } = await supabase
+    .from("answer_types")
+    .select("id")
+    .eq("id", answer_type_id)
+    .maybeSingle();
+
+  if (answerTypeError) {
+    return NextResponse.json({ error: answerTypeError.message }, { status: 400 });
+  }
+
+  if (!answerType) {
+    return NextResponse.json({ error: "Invalid answer_type_id: answer type does not exist" }, { status: 400 });
+  }
+
   const normalizedAllowedTypes =
     Array.isArray(allowed_answer_type_ids) && allowed_answer_type_ids.length > 0
       ? Array.from(new Set(allowed_answer_type_ids.filter((v) => typeof v === "string")))
       : [];
+
+  // Validate that all allowed answer type ids exist
+  if (normalizedAllowedTypes.length > 0) {
+    const { data: existingTypes, error: typesError } = await supabase
+      .from("answer_types")
+      .select("id")
+      .in("id", normalizedAllowedTypes);
+
+    if (typesError) {
+      return NextResponse.json({ error: typesError.message }, { status: 400 });
+    }
+
+    if ((existingTypes?.length ?? 0) !== normalizedAllowedTypes.length) {
+      return NextResponse.json({ error: "One or more allowed_answer_type_ids do not exist" }, { status: 400 });
+    }
+  }
 
   const allowedDisplayOptions: DisplayOption[] =
     Array.isArray(allowed_display_options) && allowed_display_options.length > 0
@@ -165,7 +196,24 @@ export async function PUT(request: Request) {
   if (category_id !== undefined) updates.category_id = category_id;
   if (meta !== undefined) updates.meta = meta;
   if (is_active !== undefined) updates.is_active = is_active;
-  if (answer_type_id !== undefined) updates.answer_type_id = answer_type_id;
+  if (answer_type_id !== undefined) {
+    // Validate that the answer_type_id exists
+    const { data: answerType, error: answerTypeError } = await supabase
+      .from("answer_types")
+      .select("id")
+      .eq("id", answer_type_id)
+      .maybeSingle();
+
+    if (answerTypeError) {
+      return NextResponse.json({ error: answerTypeError.message }, { status: 400 });
+    }
+
+    if (!answerType) {
+      return NextResponse.json({ error: "Invalid answer_type_id: answer type does not exist" }, { status: 400 });
+    }
+
+    updates.answer_type_id = answer_type_id;
+  }
 
   if (allowed_answer_type_ids !== undefined) {
     const normalized =

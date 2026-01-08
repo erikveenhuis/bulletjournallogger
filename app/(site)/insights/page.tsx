@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getEffectiveUser, getEffectiveSupabaseClient } from "@/lib/auth";
 import Link from "next/link";
 import InsightsChart from "./insights-chart";
 import { type ChartStyle } from "@/lib/types";
@@ -6,12 +6,10 @@ import { type ChartStyle } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 export default async function InsightsPage() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getEffectiveSupabaseClient();
+  const { user: effectiveUser } = await getEffectiveUser();
 
-  if (!user) {
+  if (!effectiveUser) {
     return (
       <div className="bujo-note text-sm text-yellow-900">
         Please <Link href="/sign-in">sign in</Link> to view insights.
@@ -22,19 +20,19 @@ export default async function InsightsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select("chart_palette, chart_style")
-    .eq("user_id", user.id)
+    .eq("user_id", effectiveUser.id)
     .maybeSingle();
 
   const { data: answers } = await supabase
     .from("answers")
     .select("*, question_templates(id,title, answer_types(*))")
-    .eq("user_id", user.id)
+    .eq("user_id", effectiveUser.id)
     .order("question_date", { ascending: true });
 
   const { data: userQuestions } = await supabase
     .from("user_questions")
     .select("template_id, color_palette, answer_type_override:answer_types!answer_type_override_id(*)")
-    .eq("user_id", user.id);
+    .eq("user_id", effectiveUser.id);
 
   const normalizedUserQuestions =
     userQuestions?.map((uq) => ({
