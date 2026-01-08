@@ -93,8 +93,25 @@ export async function POST(request: Request) {
       ? template.allowed_answer_type_ids
       : [template.answer_type_id];
 
-  if (answer_type_override_id && !allowedAnswerTypes.includes(answer_type_override_id)) {
-    return NextResponse.json({ error: "answer_type_override_id is not allowed for this question" }, { status: 400 });
+  if (answer_type_override_id) {
+    if (!allowedAnswerTypes.includes(answer_type_override_id)) {
+      return NextResponse.json({ error: "answer_type_override_id is not allowed for this question" }, { status: 400 });
+    }
+
+    // Validate that the answer type exists
+    const { data: answerType, error: answerTypeError } = await supabase
+      .from("answer_types")
+      .select("id")
+      .eq("id", answer_type_override_id)
+      .maybeSingle();
+
+    if (answerTypeError) {
+      return NextResponse.json({ error: answerTypeError.message }, { status: 400 });
+    }
+
+    if (!answerType) {
+      return NextResponse.json({ error: "Invalid answer_type_override_id: answer type does not exist" }, { status: 400 });
+    }
   }
 
   const allowedDisplays =
@@ -198,6 +215,24 @@ export async function PUT(request: Request) {
     if (answer_type_override_id && !allowedAnswerTypes.includes(answer_type_override_id)) {
       return NextResponse.json({ error: "answer_type_override_id is not allowed for this question" }, { status: 400 });
     }
+
+    if (answer_type_override_id) {
+      // Validate that the answer type exists
+      const { data: answerType, error: answerTypeError } = await supabase
+        .from("answer_types")
+        .select("id")
+        .eq("id", answer_type_override_id)
+        .maybeSingle();
+
+      if (answerTypeError) {
+        return NextResponse.json({ error: answerTypeError.message }, { status: 400 });
+      }
+
+      if (!answerType) {
+        return NextResponse.json({ error: "Invalid answer_type_override_id: answer type does not exist" }, { status: 400 });
+      }
+    }
+
     updates.answer_type_override_id = answer_type_override_id ?? null;
   }
 

@@ -25,6 +25,7 @@ export default async function JournalPage() {
     .eq("is_active", true)
     .order("sort_order");
 
+
   const today = new Date().toISOString().slice(0, 10);
 
   return (

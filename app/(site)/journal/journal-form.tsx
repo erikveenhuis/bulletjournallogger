@@ -56,17 +56,14 @@ export default function JournalForm({ date, userQuestions }: Props) {
   const [hasUserEdited, setHasUserEdited] = useState(false);
   const [lastSavedValues, setLastSavedValues] = useState<Record<string, AnswerValue>>({});
 
-  // Only work with questions that still have an attached template and valid answer type.
-  const validUserQuestions = useMemo(() => {
-    return userQuestions
-      .filter(
+  // Only work with questions that still have an attached template (can be null if deleted).
+  const validUserQuestions = useMemo(
+    () =>
+      userQuestions.filter(
         (uq): uq is UserQuestion & { template: NonNullable<UserQuestion["template"]> } => !!uq.template,
-      )
-      .filter((uq) => {
-        const answerType = uq.answer_type_override || uq.template.answer_types;
-        return !!answerType; // Must have a valid answer type
-      });
-  }, [userQuestions]);
+      ),
+    [userQuestions],
+  );
   const validTemplateIds = useMemo(() => validUserQuestions.map((uq) => uq.template_id), [validUserQuestions]);
 
   const getAnswerTypeForQuestion = (uq: UserQuestion & { template: NonNullable<UserQuestion["template"]> }) =>
@@ -189,6 +186,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
           throw new Error("Failed to load answered days");
         }
         const data = (await res.json()) as AnswerRow[];
+
         if (validTemplateIds.length === 0) {
           setAnsweredDates({});
           return;
@@ -209,8 +207,18 @@ export default function JournalForm({ date, userQuestions }: Props) {
             return;
           }
 
-          if (!counts[ans.question_date]) counts[ans.question_date] = new Set<string>();
-          counts[ans.question_date]!.add(templateId);
+          // Only count this as answered if it has a meaningful value
+          const hasValue = ans.bool_value !== null && ans.bool_value !== undefined ||
+                           ans.number_value !== null && ans.number_value !== undefined ||
+                           ans.scale_value !== null && ans.scale_value !== undefined ||
+                           (ans.emoji_value !== null && ans.emoji_value !== undefined && ans.emoji_value.trim() !== "") ||
+                           (ans.text_value !== null && ans.text_value !== undefined && ans.text_value.trim() !== "");
+
+
+          if (hasValue) {
+            if (!counts[ans.question_date]) counts[ans.question_date] = new Set<string>();
+            counts[ans.question_date]!.add(templateId);
+          }
         });
 
         Object.entries(counts).forEach(([dateKey, templateSet]) => {

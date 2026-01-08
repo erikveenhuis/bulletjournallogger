@@ -224,6 +224,23 @@ export async function PUT(request: Request) {
     if (targetAnswerType && normalized.length > 0 && !normalized.includes(targetAnswerType)) {
       normalized.push(targetAnswerType);
     }
+
+    // Validate that all allowed answer type ids exist
+    if (normalized.length > 0) {
+      const { data: existingTypes, error: typesError } = await supabase
+        .from("answer_types")
+        .select("id")
+        .in("id", normalized);
+
+      if (typesError) {
+        return NextResponse.json({ error: typesError.message }, { status: 400 });
+      }
+
+      if ((existingTypes?.length ?? 0) !== normalized.length) {
+        return NextResponse.json({ error: "One or more allowed_answer_type_ids do not exist" }, { status: 400 });
+      }
+    }
+
     updates.allowed_answer_type_ids = normalized;
   }
 
