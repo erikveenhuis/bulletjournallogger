@@ -1,5 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { QuestionTemplate, UserQuestion } from "@/lib/types";
+import { AnswerType, QuestionTemplate, UserQuestion } from "@/lib/types";
 import Link from "next/link";
 import ProfileForm from "./profile-form";
 import TemplatesClient from "./templates-client";
@@ -32,6 +32,8 @@ export default async function DashboardPage() {
     .select("*")
     .order("name");
 
+  const { data: answerTypes } = await supabase.from("answer_types").select("*").order("name");
+
   const { data: templates } = await supabase
     .from("question_templates")
     .select("*, categories(name), answer_types(*)")
@@ -40,7 +42,9 @@ export default async function DashboardPage() {
 
   const { data: userQuestions } = await supabase
     .from("user_questions")
-    .select("*, template:question_templates(*, categories(name), answer_types(*))")
+    .select(
+      "*, template:question_templates(*, categories(name), answer_types(*)), answer_type_override:answer_types!answer_type_override_id(*)",
+    )
     .eq("user_id", user.id)
     .eq("is_active", true)
     .order("sort_order");
@@ -86,6 +90,7 @@ export default async function DashboardPage() {
 
       <SelectedQuestions
         userQuestions={(userQuestions || []) as UserQuestion[]}
+        answerTypes={(answerTypes || []) as AnswerType[]}
       />
     </div>
   );

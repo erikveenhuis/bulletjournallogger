@@ -66,6 +66,9 @@ export default function JournalForm({ date, userQuestions }: Props) {
   );
   const validTemplateIds = useMemo(() => validUserQuestions.map((uq) => uq.template_id), [validUserQuestions]);
 
+  const getAnswerTypeForQuestion = (uq: UserQuestion & { template: NonNullable<UserQuestion["template"]> }) =>
+    uq.answer_type_override || uq.template.answer_types;
+
   const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const selectedDateObj = selectedDate ? parseISO(selectedDate) : todayDate;
   const canGoNextMonth = !isAfter(startOfMonth(addMonths(currentMonth, 1)), todayDate);
@@ -258,9 +261,10 @@ export default function JournalForm({ date, userQuestions }: Props) {
 
       const payload = validUserQuestions.map((uq) => {
         const template = uq.template;
+        const answerType = getAnswerTypeForQuestion(uq);
         return {
           template_id: uq.template_id,
-          type: template.answer_types?.type ?? "text",
+          type: answerType?.type ?? "text",
           value: valuesToUse[uq.template_id],
           prompt_snapshot: template.title,
           category_snapshot: template.categories?.name,
@@ -474,6 +478,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
           const prompt = uq.custom_label || t.title;
           const isWaterQuestion = (t.title ?? "").trim().toLowerCase() === "how many cups of water?";
           const status = getStatusMeta(uq.template_id);
+          const answerType = getAnswerTypeForQuestion(uq);
         const numericValue = values[uq.template_id];
         const numberInputValue = typeof numericValue === "number" ? numericValue : "";
           const questionClassName = isWaterQuestion
@@ -492,13 +497,13 @@ export default function JournalForm({ date, userQuestions }: Props) {
                     <span className={`h-2 w-2 rounded-full ${statusDotClass[status.tone]}`} />
                     {status.label}
                   </span>
-                  <span className="bujo-tag">{t.answer_types?.type ?? "unknown"}</span>
+                  <span className="bujo-tag">{answerType?.type ?? "unknown"}</span>
                   {t.categories?.name ? (
                     <span className="bujo-tag">{t.categories.name}</span>
                   ) : null}
                 </div>
               </div>
-              {t.answer_types?.type === "boolean" && (
+              {answerType?.type === "boolean" && (
                 <div className="flex flex-wrap items-center gap-4 text-sm text-gray-800">
                   <label className="flex items-center gap-2">
                     <input
@@ -522,7 +527,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
                   </label>
                 </div>
               )}
-              {t.answer_types?.type === "number" && (
+              {answerType?.type === "number" && (
                 <input
                   type="number"
                   className={isWaterQuestion ? "w-full px-3 py-2" : "bujo-input"}
@@ -533,10 +538,10 @@ export default function JournalForm({ date, userQuestions }: Props) {
                   }}
                 />
               )}
-              {t.answer_types?.type === "scale" && (
+              {answerType?.type === "scale" && (
                 <div className="flex flex-wrap items-center gap-3">
                   {(() => {
-                    const meta = (t.answer_types?.meta as Record<string, unknown>) || {};
+                    const meta = (answerType?.meta as Record<string, unknown>) || {};
                     const min = typeof meta.min === "number" ? meta.min : 1;
                     const max = typeof meta.max === "number" ? meta.max : 5;
                     const currentValue =
@@ -559,7 +564,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
                   })()}
                 </div>
               )}
-              {t.answer_types?.type === "emoji" && (
+              {answerType?.type === "emoji" && (
                 <select
                   className="bujo-input"
                   value={typeof values[uq.template_id] === "string" ? String(values[uq.template_id]) : ""}
@@ -569,8 +574,8 @@ export default function JournalForm({ date, userQuestions }: Props) {
                     Select
                   </option>
                   {(() => {
-                    const items = t.answer_types?.items;
-                    const meta = (t.answer_types?.meta as Record<string, unknown>) || {};
+                    const items = answerType?.items;
+                    const meta = (answerType?.meta as Record<string, unknown>) || {};
                     const emojiSetRaw = (meta as Record<string, unknown>)["emoji_set"];
                     const emojiSet = Array.isArray(emojiSetRaw)
                       ? emojiSetRaw.map((e) => String(e))
@@ -584,7 +589,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
                   })()}
                 </select>
               )}
-              {t.answer_types?.type === "text" && (
+              {answerType?.type === "text" && (
                 <textarea
                   className="bujo-input"
                   rows={3}
@@ -592,8 +597,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
                   onChange={(e) => setValue(uq.template_id, e.target.value)}
                 />
               )}
-              {t.answer_types?.type === "yes_no_list" && (() => {
-                const answerType = t.answer_types;
+              {answerType?.type === "yes_no_list" && (() => {
                 if (!answerType) {
                   return (
                     <p className="text-sm text-red-600">

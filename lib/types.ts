@@ -3,6 +3,7 @@
 export type QuestionType = "boolean" | "number" | "scale" | "text" | "emoji" | "yes_no_list";
 
 export type ChartStyle = "gradient" | "brush" | "solid";
+export type DisplayOption = "graph" | "list" | "grid" | "count";
 
 export type Profile = {
   user_id: string;
@@ -28,6 +29,10 @@ export type ChartPalette = {
   booleanNo: string;
   scaleLow: string;
   scaleHigh: string;
+  cardBackground?: string;
+  cardText?: string;
+  countBackground?: string;
+  countAccent?: string;
 };
 
 export type AnswerType = {
@@ -48,6 +53,10 @@ export type QuestionTemplate = {
   meta: Record<string, unknown> | null;
   is_active: boolean | null;
   answer_type_id: string;
+  allowed_answer_type_ids?: string[] | null;
+  default_display_option?: DisplayOption;
+  allowed_display_options?: DisplayOption[] | null;
+  default_colors?: ChartPalette | null;
   categories?: {
     name: string;
   } | null;
@@ -61,6 +70,10 @@ export type UserQuestion = {
   sort_order: number | null;
   custom_label: string | null;
   is_active: boolean | null;
+  answer_type_override_id?: string | null;
+  display_option_override?: DisplayOption | null;
+  color_palette?: ChartPalette | null;
+  answer_type_override?: AnswerType | null;
   template?: QuestionTemplate;
   category?: Category;
 };

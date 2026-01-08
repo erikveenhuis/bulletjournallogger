@@ -3,7 +3,18 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const fiveMinutePattern = /^([01]\d|2[0-3]):([0-5]\d)(?::\d{2})?$/;
 const hexColorPattern = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-const allowedPaletteKeys = ["accent", "accentSoft", "booleanYes", "booleanNo", "scaleLow", "scaleHigh"] as const;
+const allowedPaletteKeys = [
+  "accent",
+  "accentSoft",
+  "booleanYes",
+  "booleanNo",
+  "scaleLow",
+  "scaleHigh",
+  "cardBackground",
+  "cardText",
+  "countBackground",
+  "countAccent",
+] as const;
 const allowedChartStyles = ["gradient", "brush", "solid"] as const;
 type ChartStyle = (typeof allowedChartStyles)[number];
 
@@ -104,10 +115,7 @@ export async function PUT(request: Request) {
     if (chart_style === null) {
       normalizedChartStyle = "gradient";
     } else if (!isValidChartStyle(chart_style)) {
-      return NextResponse.json(
-        { error: "chart_style must be either 'gradient' (current) or 'brush'." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "chart_style must be one of gradient, brush, or solid." }, { status: 400 });
     } else {
       normalizedChartStyle = chart_style;
     }

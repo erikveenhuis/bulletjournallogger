@@ -150,6 +150,22 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Answer type id is required" }, { status: 400 });
   }
 
+  const { count, error: usageError } = await supabase
+    .from("question_templates")
+    .select("id", { count: "exact", head: true })
+    .eq("answer_type_id", id);
+
+  if (usageError) {
+    return NextResponse.json({ error: usageError.message }, { status: 400 });
+  }
+
+  if ((count ?? 0) > 0) {
+    return NextResponse.json(
+      { error: "Cannot delete an answer type that is used by existing question templates." },
+      { status: 400 },
+    );
+  }
+
   const { error } = await supabase.from("answer_types").delete().eq("id", id);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });

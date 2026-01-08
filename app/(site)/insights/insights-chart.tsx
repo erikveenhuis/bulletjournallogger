@@ -53,6 +53,7 @@ type QuestionSeries = {
   unit?: string;
   scaleRange?: { min: number; max: number };
   points: Array<{ date: string; value: number }>;
+  palette?: ChartPalette;
 };
 
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -84,8 +85,8 @@ function normalizeHexColor(value?: string | null) {
   return `#${expanded.toLowerCase()}`;
 }
 
-function sanitizePalette(input?: Partial<ChartPalette> | null): ChartPalette {
-  const palette = { ...defaultPalette };
+function sanitizePalette(input?: Partial<ChartPalette> | null, fallback?: ChartPalette): ChartPalette {
+  const palette = { ...(fallback ?? defaultPalette) };
   if (!input) return palette;
   (Object.keys(palette) as Array<keyof ChartPalette>).forEach((key) => {
     const normalized = normalizeHexColor(input[key] || undefined);
@@ -134,10 +135,24 @@ function buildScaleColors(palette: ChartPalette): ScaleColors {
   };
 }
 
-function toQuestionSeries(answers: AnswerRow[]): QuestionSeries[] {
+type UserQuestionOverride = {
+  template_id: string;
+  color_palette?: ChartPalette | null;
+  answer_type_override?:
+    | {
+        type?: string | null;
+        meta?: Record<string, unknown> | null;
+      }
+    | null;
+};
+
+function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQuestionOverride>): QuestionSeries[] {
   return Object.values(
     answers.reduce<Record<string, QuestionSeries>>((acc, row) => {
-      const meta = (row.question_templates?.answer_types?.meta as Record<string, unknown> | null) || null;
+      const override = row.template_id ? overrides?.get(row.template_id) : undefined;
+      const meta =
+        (override?.answer_type_override?.meta as Record<string, unknown> | null) ||
+        ((row.question_templates?.answer_types?.meta as Record<string, unknown> | null) || null);
       const metaUnit = meta?.["unit"];
       const metaMin = meta?.["min"];
       const metaMax = meta?.["max"];
@@ -151,8 +166,12 @@ function toQuestionSeries(answers: AnswerRow[]): QuestionSeries[] {
             ? { min: scaleMinValue, max: scaleMaxValue }
             : { min: scaleMinValue, max: scaleMinValue + 4 }
           : { min: 1, max: 5 };
-      const type = (row.question_templates?.answer_types?.type as QuestionSeries["type"]) || "other";
+      const type =
+        ((override?.answer_type_override?.type as QuestionSeries["type"]) ||
+          (row.question_templates?.answer_types?.type as QuestionSeries["type"])) ||
+        "other";
       const templateId = row.template_id || undefined;
+      const palette = (override?.color_palette as ChartPalette | undefined) || undefined;
       const value =
         type === "boolean"
           ? row.bool_value === null || row.bool_value === undefined
@@ -191,7 +210,10 @@ function toQuestionSeries(answers: AnswerRow[]): QuestionSeries[] {
           unit,
           scaleRange: type === "scale" ? scaleRange : undefined,
           points: [],
+          palette,
         };
+      } else if (palette && !acc[id].palette) {
+        acc[id].palette = palette;
       }
       acc[id].points.push({ date: row.question_date, value: Number(value) });
       return acc;
@@ -668,83 +690,83 @@ export default function InsightsChart({
   answers,
   chartPalette,
   chartStyle,
+  userQuestions,
 }: {
   answers: AnswerRow[];
   chartPalette?: Partial<ChartPalette> | null;
   chartStyle?: ChartStyle | null;
+  userQuestions?: UserQuestionOverride[] | null;
 }) {
-  const questionSeries = useMemo(() => toQuestionSeries(answers), [answers]);
+  const overrideMap = useMemo(
+    () => new Map((userQuestions || []).map((uq) => [uq.template_id, uq])),
+    [userQuestions],
+  );
+  const questionSeries = useMemo(() => toQuestionSeries(answers, overrideMap), [answers, overrideMap]);
   const [seriesData, setSeriesData] = useState<QuestionSeries[]>(questionSeries);
   const [modalState, setModalState] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const palette = useMemo(() => sanitizePalette(chartPalette ?? null), [chartPalette]);
-  const scaleColors = useMemo(() => buildScaleColors(palette), [palette]);
   const resolvedStyle: ChartStyle =
     chartStyle === "brush" || chartStyle === "solid" ? chartStyle : "gradient";
   const isBrush = resolvedStyle === "brush";
   const isSolid = resolvedStyle === "solid";
 
-  const baseLineOptions = useMemo<ChartOptions<"line">>(
-    () => ({
-      responsive: true,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: "rgba(47, 74, 61, 0.92)",
-          titleColor: "#fffbf4",
-          bodyColor: "#fffbf4",
-          borderColor: "rgba(47, 74, 61, 0.6)",
-          borderWidth: 1.2,
+  const buildLineOptions = (paletteForSeries: ChartPalette): ChartOptions<"line"> => ({
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: "rgba(47, 74, 61, 0.92)",
+        titleColor: "#fffbf4",
+        bodyColor: "#fffbf4",
+        borderColor: "rgba(47, 74, 61, 0.6)",
+        borderWidth: 1.2,
+      },
+    },
+    elements: {
+      line: {
+        tension: isBrush ? 0.22 : 0.35,
+        borderDash: isBrush ? [2, 3.5] : isSolid ? [] : [6, 4],
+        borderWidth: isBrush ? 3.1 : isSolid ? 2.2 : 2.6,
+        borderCapStyle: "round",
+        borderJoinStyle: "round",
+      },
+      point: {
+        radius: isBrush ? 5.2 : isSolid ? 4.8 : 4.4,
+        borderWidth: isBrush ? 2 : isSolid ? 1.8 : 1.6,
+        backgroundColor: isBrush
+          ? toRgba(paletteForSeries.accentSoft, 0.52, "#fef3c7")
+          : isSolid
+            ? toRgba(paletteForSeries.accentSoft, 0.24, "#fdf3c4")
+            : "#fffbf4",
+        borderColor: toRgba(paletteForSeries.accent, 1, "var(--bujo-accent-ink)"),
+        hoverRadius: isBrush ? 6.8 : isSolid ? 6.2 : 6,
+      },
+    },
+    scales: {
+      x: {
+        ticks: {
+          color: "var(--bujo-accent-ink)",
+          font: { weight: 600 },
+        },
+        grid: {
+          color: "rgba(214, 197, 170, 0.45)",
+          drawTicks: false,
         },
       },
-      elements: {
-        line: {
-          tension: isBrush ? 0.22 : 0.35,
-          borderDash: isBrush ? [2, 3.5] : isSolid ? [] : [6, 4],
-          borderWidth: isBrush ? 3.1 : isSolid ? 2.2 : 2.6,
-          borderCapStyle: "round",
-          borderJoinStyle: "round",
+      y: {
+        ticks: {
+          color: "var(--bujo-accent-ink)",
+          font: { weight: 600 },
         },
-        point: {
-          radius: isBrush ? 5.2 : isSolid ? 4.8 : 4.4,
-          borderWidth: isBrush ? 2 : isSolid ? 1.8 : 1.6,
-          backgroundColor: isBrush
-            ? toRgba(palette.accentSoft, 0.52, "#fef3c7")
-            : isSolid
-              ? toRgba(palette.accentSoft, 0.24, "#fdf3c4")
-              : "#fffbf4",
-          borderColor: toRgba(palette.accent, 1, "var(--bujo-accent-ink)"),
-          hoverRadius: isBrush ? 6.8 : isSolid ? 6.2 : 6,
+        grid: {
+          color: "rgba(214, 197, 170, 0.35)",
+          drawTicks: false,
         },
       },
-      scales: {
-        x: {
-          ticks: {
-            color: "var(--bujo-accent-ink)",
-            font: { weight: 600 },
-          },
-          grid: {
-            color: "rgba(214, 197, 170, 0.45)",
-            borderDash: [3, 6],
-            drawTicks: false,
-          },
-        },
-        y: {
-          ticks: {
-            color: "var(--bujo-accent-ink)",
-            font: { weight: 600 },
-          },
-          grid: {
-            color: "rgba(214, 197, 170, 0.35)",
-            borderDash: [3, 6],
-            drawTicks: false,
-          },
-        },
-      },
-    }),
-    [palette, isBrush, isSolid],
-  );
+    },
+  });
 
   useEffect(() => {
     setSeriesData(questionSeries);
@@ -821,6 +843,11 @@ export default function InsightsChart({
           key={series.id}
           className={`bujo-card bujo-torn ${isBrush ? "bujo-card--brush" : ""} ${isSolid ? "bujo-card--solid" : ""}`}
         >
+          {(() => {
+            const seriesPalette = series.palette ? sanitizePalette(series.palette, palette) : palette;
+            const seriesScaleColors = buildScaleColors(seriesPalette);
+            return (
+              <>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">{series.label}</h2>
@@ -831,16 +858,16 @@ export default function InsightsChart({
           <QuestionCalendar
             series={series}
             onSelectDay={(date, value, isFuture) => handleSelectDay(series, date, value, isFuture)}
-            palette={palette}
-            scaleColors={scaleColors}
+            palette={seriesPalette}
+            scaleColors={seriesScaleColors}
             chartStyle={resolvedStyle}
           />
 
           {series.type === "number" ? (
             <NumberBarChart
               series={series}
-              palette={palette}
-              scaleColors={scaleColors}
+              palette={seriesPalette}
+              scaleColors={seriesScaleColors}
               chartStyle={resolvedStyle}
             />
           ) : series.type === "boolean" ? null : (
@@ -854,17 +881,18 @@ export default function InsightsChart({
                       {
                         label: `${series.typeLabel} trend`,
                         data: daily.map((d) => d.value),
-                        borderColor: toRgba(palette.accent, 0.9, "rgba(47, 74, 61, 0.85)"),
+                        borderColor: toRgba(seriesPalette.accent, 0.9, "rgba(47, 74, 61, 0.85)"),
                         backgroundColor: isBrush
-                          ? toRgba(palette.accent, 0.12, "rgba(47, 74, 61, 0.12)")
+                          ? toRgba(seriesPalette.accent, 0.12, "rgba(47, 74, 61, 0.12)")
                           : isSolid
-                            ? toRgba(palette.accentSoft, 0.12, "rgba(95, 139, 122, 0.12)")
-                            : toRgba(palette.accentSoft, 0.18, "rgba(95, 139, 122, 0.18)"),
+                            ? toRgba(seriesPalette.accentSoft, 0.12, "rgba(95, 139, 122, 0.12)")
+                            : toRgba(seriesPalette.accentSoft, 0.18, "rgba(95, 139, 122, 0.18)"),
                       },
                     ],
                   };
                 })()}
                 options={(() => {
+                  const baseLineOptions = buildLineOptions(seriesPalette);
                   const yMinBase = series.type === "scale" ? series.scaleRange?.min ?? 1 : undefined;
                   const yMaxBase = series.type === "scale" ? series.scaleRange?.max ?? 5 : undefined;
                   const verticalPadding = series.type === "scale" ? 0.35 : 0;
@@ -903,6 +931,9 @@ export default function InsightsChart({
               />
             </div>
           )}
+          </>
+        );
+          })()}
         </div>
       ))}
 

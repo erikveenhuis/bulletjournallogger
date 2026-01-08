@@ -31,6 +31,20 @@ export default async function InsightsPage() {
     .eq("user_id", user.id)
     .order("question_date", { ascending: true });
 
+  const { data: userQuestions } = await supabase
+    .from("user_questions")
+    .select("template_id, color_palette, answer_type_override:answer_types!answer_type_override_id(*)")
+    .eq("user_id", user.id);
+
+  const normalizedUserQuestions =
+    userQuestions?.map((uq) => ({
+      template_id: uq.template_id,
+      color_palette: uq.color_palette,
+      answer_type_override: Array.isArray(uq.answer_type_override)
+        ? uq.answer_type_override[0] ?? null
+        : uq.answer_type_override ?? null,
+    })) ?? [];
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -50,6 +64,7 @@ export default async function InsightsPage() {
         answers={answers || []}
         chartPalette={profile?.chart_palette as Record<string, string> | undefined}
         chartStyle={(profile?.chart_style as ChartStyle | null) || undefined}
+        userQuestions={normalizedUserQuestions}
       />
     </div>
   );
