@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import ConfirmDialog from "@/components/confirm-dialog";
 import {
   addDays,
   addMonths,
@@ -55,6 +56,12 @@ export default function JournalForm({ date, userQuestions }: Props) {
   const [loadingMonth, setLoadingMonth] = useState(false);
   const [hasUserEdited, setHasUserEdited] = useState(false);
   const [lastSavedValues, setLastSavedValues] = useState<Record<string, AnswerValue>>({});
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Only work with questions that still have an attached template (can be null if deleted).
   const validUserQuestions = useMemo(
@@ -260,8 +267,8 @@ export default function JournalForm({ date, userQuestions }: Props) {
         if (!auto) setError("Pick a date first.");
         return;
       }
-      if (validUserQuestions.length === 0) {
-        if (!auto) setError("No questions to save. Add questions in the dashboard first.");
+        if (validUserQuestions.length === 0) {
+        if (!auto) setError("No questions to save. Add questions in your profile first.");
         return;
       }
       if (saving) return;
@@ -315,6 +322,103 @@ export default function JournalForm({ date, userQuestions }: Props) {
     },
     [selectedDate, values, saving, computeDayStatus, validUserQuestions],
   );
+
+  const handleClearAllAnswers = useCallback(async () => {
+    if (!selectedDate) return;
+
+    const performClearAll = async () => {
+      setSaving(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({ question_date: selectedDate });
+        const res = await fetch(`/api/answers?${params.toString()}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || "Failed to clear answers");
+        }
+
+        // Clear local state
+        const clearedValues: Record<string, AnswerValue> = {};
+        validTemplateIds.forEach((templateId) => {
+          clearedValues[templateId] = null;
+        });
+        setValues(clearedValues);
+        setLastSavedValues(clearedValues);
+        setHasUserEdited(false);
+
+        // Update calendar status
+        setAnsweredDates((prev) => {
+          const { [selectedDate]: _, ...rest } = prev;
+          return rest;
+        });
+      } catch (error) {
+        setError(error instanceof Error ? error.message : "Failed to clear answers");
+      } finally {
+        setSaving(false);
+        setConfirmDialog(null);
+      }
+    };
+
+    setConfirmDialog({
+      open: true,
+      title: "Clear All Answers",
+      description: `Are you sure you want to clear all answers for ${format(selectedDateObj, "MMMM d, yyyy")}? This action cannot be undone.`,
+      onConfirm: performClearAll,
+    });
+  }, [selectedDate, selectedDateObj, validTemplateIds]);
+
+  const handleClearSingleAnswer = useCallback(async (templateId: string) => {
+    if (!selectedDate) return;
+
+    const performClearSingle = async () => {
+      setSaving(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({
+          question_date: selectedDate,
+          template_id: templateId
+        });
+        const res = await fetch(`/api/answers?${params.toString()}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || "Failed to clear answer");
+        }
+
+        // Update local state for this specific answer
+        const newValues = { ...values, [templateId]: null };
+        setValues(newValues);
+        setLastSavedValues({ ...lastSavedValues, [templateId]: null });
+        setHasUserEdited(false);
+
+        // Update calendar status
+        const newDayStatus = computeDayStatus(newValues);
+        setAnsweredDates((prev) => {
+          if (!newDayStatus) {
+            const { [selectedDate]: _, ...rest } = prev;
+            return rest;
+          }
+          return { ...prev, [selectedDate]: newDayStatus };
+        });
+      } catch (error) {
+        setError(error instanceof Error ? error.message : "Failed to clear answer");
+      } finally {
+        setSaving(false);
+        setConfirmDialog(null);
+      }
+    };
+
+    const questionTitle = validUserQuestions.find(uq => uq.template_id === templateId)?.template?.title || "this question";
+    setConfirmDialog({
+      open: true,
+      title: "Clear Answer",
+      description: `Are you sure you want to clear the answer for "${questionTitle}"? This action cannot be undone.`,
+      onConfirm: performClearSingle,
+    });
+  }, [selectedDate, values, lastSavedValues, computeDayStatus, validUserQuestions]);
 
   useEffect(() => {
     if (!hasUserEdited) return;
@@ -481,9 +585,19 @@ export default function JournalForm({ date, userQuestions }: Props) {
               <span className="ml-3 h-2 w-2 rounded-full bg-amber-500" />
               <span>Partially answered</span>
             </div>
-            <span className="font-semibold text-gray-800">
-              Selected: {format(selectedDateObj, "MMMM d, yyyy")}
-            </span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleClearAllAnswers}
+                disabled={saving || loadingExisting}
+                className="bujo-btn-secondary px-3 py-1 text-xs disabled:opacity-50"
+              >
+                Clear All
+              </button>
+              <span className="font-semibold text-gray-800">
+                Selected: {format(selectedDateObj, "MMMM d, yyyy")}
+              </span>
+            </div>
           </div>
           {loadingMonth && <p className="text-xs text-gray-600">Updating calendar…</p>}
           {loadingExisting && <p className="text-sm text-gray-600">Loading saved answers for that date…</p>}
@@ -513,6 +627,16 @@ export default function JournalForm({ date, userQuestions }: Props) {
                       <span className={`h-2 w-2 rounded-full ${statusDotClass[status.tone]}`} />
                       {status.label}
                     </span>
+                  )}
+                  {isValueAnswered(values[uq.template_id]) && (
+                    <button
+                      type="button"
+                      onClick={() => handleClearSingleAnswer(uq.template_id)}
+                      disabled={saving}
+                      className="bujo-btn-secondary px-2 py-0.5 text-xs disabled:opacity-50"
+                    >
+                      Clear
+                    </button>
                   )}
                   <span className="bujo-tag">{answerType?.type ?? "unknown"}</span>
                   {t.categories?.name ? (
@@ -686,16 +810,25 @@ export default function JournalForm({ date, userQuestions }: Props) {
         })}
         {userQuestions.length === 0 && (
           <p className="bujo-note text-sm text-gray-700">
-            You have no questions yet. Add some from the dashboard.
+            You have no questions yet. Add some from your profile.
           </p>
         )}
         {userQuestions.length > 0 && validUserQuestions.length === 0 && (
           <p className="bujo-note text-sm text-red-800">
-            Your saved questions reference missing templates. Re-add them from the dashboard.
+            Your saved questions reference missing templates. Re-add them from your profile.
           </p>
         )}
         {error && <p className="bujo-message text-sm text-red-700">{error}</p>}
       </div>
+      {confirmDialog && (
+        <ConfirmDialog
+          open={confirmDialog.open}
+          title={confirmDialog.title}
+          description={confirmDialog.description}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
     </section>
   );
 }

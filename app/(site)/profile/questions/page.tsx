@@ -1,29 +1,21 @@
 import { getEffectiveUser, getEffectiveSupabaseClient } from "@/lib/auth";
 import { AnswerType, QuestionTemplate, UserQuestion } from "@/lib/types";
-import Link from "next/link";
-import ProfileForm from "./profile-form";
-import TemplatesClient from "./templates-client";
-import SelectedQuestions from "./selected-questions";
+import TemplatesClient from "../templates-client";
+import SelectedQuestions from "../selected-questions";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+export default async function QuestionsPage() {
   const supabase = await getEffectiveSupabaseClient();
   const { user: effectiveUser } = await getEffectiveUser();
 
   if (!effectiveUser) {
     return (
       <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
-        Please <Link href="/sign-in">sign in</Link> to manage your questions.
+        Please <a href="/sign-in" className="underline">sign in</a> to manage your questions.
       </div>
     );
   }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("user_id", effectiveUser.id)
-    .maybeSingle();
 
   const { data: categories } = await supabase
     .from("categories")
@@ -47,38 +39,17 @@ export default async function DashboardPage() {
     .eq("is_active", true)
     .order("sort_order");
 
-  const timezoneOptions = [
-    "UTC",
-    "Europe/Amsterdam",
-    "Europe/London",
-    "America/New_York",
-    "America/Los_Angeles",
-    "Asia/Singapore",
-    "Asia/Tokyo",
-  ];
-
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="bujo-section-title text-xs">Setup</p>
-          <h1 className="text-3xl font-semibold text-gray-900">Dashboard</h1>
+          <p className="bujo-section-title text-xs">Profile</p>
+          <h1 className="text-3xl font-semibold text-gray-900">My questions</h1>
           <p className="text-sm text-gray-700">
-            Configure your reminders and daily questions.
+            Browse templates and customize your daily questions.
           </p>
         </div>
-        <Link
-          href="/journal"
-          className="bujo-btn w-full justify-center text-sm sm:w-auto"
-        >
-          Go to today&apos;s questions
-        </Link>
       </div>
-
-      <ProfileForm
-        profile={profile}
-        timezoneOptions={timezoneOptions}
-      />
 
       <TemplatesClient
         categories={categories || []}

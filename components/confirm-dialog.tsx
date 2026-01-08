@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+
 type ConfirmDialogProps = {
   open: boolean;
   title: string;
@@ -21,13 +24,20 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  if (!open) return null;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  if (!open || !mounted) return null;
 
   const confirmClass = confirmTone === "danger" ? "bujo-btn-danger" : "bujo-btn";
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md rounded-2xl border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-6 shadow-2xl">
+  const dialogContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+      <div className="w-full max-w-md rounded-2xl border-2 border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-6 shadow-2xl">
         <div className="space-y-2">
           <h3 className="text-lg font-semibold text-[var(--bujo-ink)]">{title}</h3>
           {description ? <p className="text-sm text-[var(--bujo-subtle)]">{description}</p> : null}
@@ -43,4 +53,6 @@ export default function ConfirmDialog({
       </div>
     </div>
   );
+
+  return createPortal(dialogContent, document.body);
 }

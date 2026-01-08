@@ -131,3 +131,38 @@ export async function POST(request: Request) {
   }
   return NextResponse.json({ success: true });
 }
+
+export async function DELETE(request: Request) {
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const url = new URL(request.url);
+  const questionDate = url.searchParams.get("question_date");
+  const templateId = url.searchParams.get("template_id");
+
+  if (!questionDate) {
+    return NextResponse.json({ error: "question_date parameter is required" }, { status: 400 });
+  }
+
+  let query = supabase
+    .from("answers")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("question_date", questionDate);
+
+  // If template_id is provided, only delete that specific answer
+  // Otherwise, delete all answers for the given date
+  if (templateId) {
+    query = query.eq("template_id", templateId);
+  }
+
+  const { error } = await query;
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ success: true });
+}

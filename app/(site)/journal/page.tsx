@@ -38,7 +38,7 @@ export default async function JournalPage() {
             Pick a date on the calendar and log answers for that day.
           </p>
         </div>
-        <Link href="/dashboard" className="bujo-btn-secondary w-full justify-center text-sm sm:w-auto">
+        <Link href="/profile" className="bujo-btn-secondary w-full justify-center text-sm sm:w-auto">
           Edit questions
         </Link>
       </div>

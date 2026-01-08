@@ -16,8 +16,8 @@ export default function Home() {
           <Link href="/sign-up" className="bujo-btn">
             Get started
           </Link>
-          <Link href="/dashboard" className="bujo-btn-secondary">
-            View dashboard
+          <Link href="/profile" className="bujo-btn-secondary">
+            View profile
           </Link>
         </div>
       </div>

@@ -34,7 +34,7 @@ export default function SignUpPage() {
         setLoading(false);
         return;
       }
-      router.push("/dashboard");
+      router.push("/profile");
       router.refresh();
     } catch (err) {
       console.error(err);

@@ -31,7 +31,7 @@ export default function SignInPage() {
         return;
       }
       // Ensure server components (e.g., header) re-render with the new session
-      router.push("/dashboard");
+      router.push("/profile");
       router.refresh();
     } catch (err) {
       console.error(err);

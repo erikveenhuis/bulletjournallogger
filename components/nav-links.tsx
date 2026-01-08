@@ -10,7 +10,7 @@ type NavLinksProps = {
 };
 
 const links = [
-  { href: "/dashboard", label: "Dashboard" },
+  { href: "/profile", label: "Profile" },
   { href: "/journal", label: "Journal" },
   { href: "/insights", label: "Insights" },
   { href: "/admin", label: "Admin", adminOnly: true },
