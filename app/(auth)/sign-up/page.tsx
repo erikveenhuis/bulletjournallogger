@@ -60,6 +60,7 @@ export default function SignUpPage() {
           <input
             type="email"
             required
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="bujo-input"
@@ -70,6 +71,7 @@ export default function SignUpPage() {
           <input
             type="password"
             required
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="bujo-input"

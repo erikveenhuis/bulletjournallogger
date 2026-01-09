@@ -23,6 +23,17 @@ const journalScript = Shadows_Into_Light({
 export const metadata: Metadata = {
   title: "Bullet Journal Logger",
   description: "Daily metrics logging with web push reminders",
+  manifest: "/manifest.json",
+  themeColor: "#000000",
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "BulletLogger",
+  },
+  formatDetection: {
+    telephone: false,
+  },
 };
 
 export default function RootLayout({
@@ -37,6 +48,20 @@ export default function RootLayout({
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Short+Stack&display=swap"
         />
+        {/* iOS PWA Support */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="BulletLogger" />
+        <link rel="apple-touch-icon" href="/favicon.ico" />
+
+        {/* Android PWA Support */}
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="theme-color" content="#000000" />
+        <meta name="msapplication-TileColor" content="#000000" />
+        <meta name="msapplication-navbutton-color" content="#000000" />
+        <meta name="application-name" content="BulletLogger" />
+        <meta name="color-scheme" content="light dark" />
+        <link rel="manifest" href="/manifest.json" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${journalScript.variable} doodle antialiased`}
