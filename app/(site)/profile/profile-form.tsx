@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
+import {
+  subscribeToPush,
+  saveSubscriptionToServer,
+  unsubscribeFromPush,
+  getCurrentSubscription,
+  checkPushSupport,
+} from "@/lib/push-subscription";
 
 type ProfileFormProps = {
   profile:
@@ -14,10 +20,6 @@ type ProfileFormProps = {
     | null;
   timezoneOptions: string[];
 };
-
-const vapidPublic = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-
-
 
 function normalizeToFiveMinutes(value?: string | null) {
   if (!value) return "09:00";
@@ -32,16 +34,6 @@ function normalizeToFiveMinutes(value?: string | null) {
   return `${hh}:${mm}`;
 }
 
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
 
 export default function ProfileForm({
   profile,
@@ -87,44 +79,27 @@ export default function ProfileForm({
 
 
   const enablePush = async () => {
-    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
-      setMessage("Push not supported in this browser");
-      return;
-    }
+    setMessage(null);
     try {
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") {
-        setMessage("Push permission not granted");
-        return;
-      }
-      if (!vapidPublic) {
-        setMessage("Missing VAPID public key");
+      const result = await subscribeToPush();
+      
+      if (!result.success) {
+        setMessage(result.error || "Unable to enable push");
         return;
       }
 
-      // Ensure the service worker is active before subscribing.
-      await navigator.serviceWorker.register("/sw.js");
-      const reg = await navigator.serviceWorker.ready;
+      if (!result.subscription) {
+        setMessage("Failed to create subscription");
+        return;
+      }
 
-      const existing = await reg.pushManager.getSubscription();
-      const sub =
-        existing ||
-        (await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidPublic),
-        }));
+      // Save subscription to server
+      const saved = await saveSubscriptionToServer(result.subscription);
+      if (!saved) {
+        setMessage("Failed to save subscription");
+        return;
+      }
 
-      const { endpoint, keys } = sub.toJSON();
-      await fetch("/api/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          endpoint,
-          p256dh: keys?.p256dh,
-          auth: keys?.auth,
-          ua: navigator.userAgent,
-        }),
-      });
       setPushOptIn(true);
       await saveProfile({ pushOptIn: true });
       setMessage("Push enabled");
@@ -137,13 +112,7 @@ export default function ProfileForm({
   const disablePush = async () => {
     setMessage(null);
     try {
-      if ("serviceWorker" in navigator) {
-        const reg =
-          (await navigator.serviceWorker.getRegistration().catch(() => null)) ||
-          (await navigator.serviceWorker.ready.catch(() => null));
-        const sub = await reg?.pushManager.getSubscription();
-        await sub?.unsubscribe();
-      }
+      await unsubscribeFromPush();
     } catch (err) {
       console.error(err);
     }
@@ -197,14 +166,8 @@ export default function ProfileForm({
           return;
         }
 
-        const reg = await navigator.serviceWorker.getRegistration().catch(() => null);
-        if (!reg) {
-          await turnOff("No service worker registered. Toggle to enable push.");
-          return;
-        }
-
-        const sub = await reg.pushManager.getSubscription();
-        const allowed = perm === "granted" && !!sub;
+        const support = await checkPushSupport();
+        const allowed = support.supported && support.permission === "granted" && support.subscribed;
 
         if (!cancelled) {
           setPushOptIn(allowed);
