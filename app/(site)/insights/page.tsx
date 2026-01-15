@@ -1,4 +1,5 @@
-import { getEffectiveUser, getEffectiveSupabaseClient } from "@/lib/auth";
+import { getEffectiveUser, getEffectiveSupabaseClient, getEffectiveAdminStatus, isImpersonating } from "@/lib/auth";
+import { getThemeDefaults } from "@/lib/theme-defaults";
 import Link from "next/link";
 import InsightsChart from "./insights-chart";
 import { type ChartStyle } from "@/lib/types";
@@ -19,9 +20,16 @@ export default async function InsightsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("chart_palette, chart_style")
+    .select("chart_palette, chart_style, account_tier, is_admin")
     .eq("user_id", effectiveUser.id)
     .maybeSingle();
+
+  const themeDefaults = await getThemeDefaults();
+  const accountTier = profile?.account_tier ?? 0;
+  const isCurrentlyImpersonating = await isImpersonating();
+  const isAdmin = profile?.is_admin || (!isCurrentlyImpersonating && (await getEffectiveAdminStatus()));
+  const effectiveTier = isAdmin ? 4 : accountTier;
+  const canUseCustomColors = effectiveTier >= 2;
 
   const { data: answers } = await supabase
     .from("answers")
@@ -31,17 +39,19 @@ export default async function InsightsPage() {
 
   const { data: userQuestions } = await supabase
     .from("user_questions")
-    .select("template_id, color_palette, answer_type_override:answer_types!answer_type_override_id(*)")
-    .eq("user_id", effectiveUser.id);
+    .select("template_id, color_palette, sort_order, display_option_override")
+    .eq("user_id", effectiveUser.id)
+    .eq("is_active", true)
+    .order("sort_order");
 
-  const normalizedUserQuestions =
-    userQuestions?.map((uq) => ({
-      template_id: uq.template_id,
-      color_palette: uq.color_palette,
-      answer_type_override: Array.isArray(uq.answer_type_override)
-        ? uq.answer_type_override[0] ?? null
-        : uq.answer_type_override ?? null,
-    })) ?? [];
+  const normalizedUserQuestions = canUseCustomColors
+    ? userQuestions?.map((uq) => ({
+        template_id: uq.template_id,
+        color_palette: uq.color_palette,
+        sort_order: uq.sort_order,
+        display_option_override: uq.display_option_override,
+      })) ?? []
+    : [];
 
   return (
     <div className="space-y-4">
@@ -60,9 +70,13 @@ export default async function InsightsPage() {
       </div>
       <InsightsChart
         answers={answers || []}
-        chartPalette={profile?.chart_palette as Record<string, string> | undefined}
-        chartStyle={(profile?.chart_style as ChartStyle | null) || undefined}
+        chartPalette={
+          canUseCustomColors ? (profile?.chart_palette as Record<string, string> | undefined) : null
+        }
+        chartStyle={canUseCustomColors ? ((profile?.chart_style as ChartStyle | null) || null) : null}
         userQuestions={normalizedUserQuestions}
+        defaultPalette={themeDefaults.chart_palette}
+        defaultStyle={themeDefaults.chart_style}
       />
     </div>
   );

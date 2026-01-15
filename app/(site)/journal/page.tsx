@@ -1,4 +1,4 @@
-import { getEffectiveUser, getEffectiveSupabaseClient } from "@/lib/auth";
+import { getEffectiveUser, getEffectiveSupabaseClient, getEffectiveAdminStatus, isImpersonating } from "@/lib/auth";
 import type { UserQuestion } from "@/lib/types";
 import Link from "next/link";
 import JournalForm from "./journal-form";
@@ -25,6 +25,17 @@ export default async function JournalPage() {
     .eq("is_active", true)
     .order("sort_order");
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("account_tier, is_admin")
+    .eq("user_id", effectiveUser.id)
+    .maybeSingle();
+
+  const accountTier = profile?.account_tier ?? 0;
+  const isCurrentlyImpersonating = await isImpersonating();
+  const isAdmin = profile?.is_admin || (!isCurrentlyImpersonating && (await getEffectiveAdminStatus()));
+  const effectiveTier = isAdmin ? 4 : accountTier;
+
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -45,6 +56,7 @@ export default async function JournalPage() {
       <JournalForm
         date={today}
         userQuestions={(userQuestions || []) as UserQuestion[]}
+        accountTier={effectiveTier}
       />
     </div>
   );

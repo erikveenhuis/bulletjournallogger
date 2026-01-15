@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type ChartPalette, type ChartStyle } from "@/lib/types";
+import { defaultThemeDefaults } from "@/lib/theme-constants";
 
 type ThemeFormProps = {
   profile:
@@ -11,25 +12,29 @@ type ThemeFormProps = {
         chart_style?: ChartStyle | null;
       }
     | null;
+  title?: string;
+  description?: string;
+  readOnly?: boolean;
+  paletteOverride?: ChartPalette;
+  styleOverride?: ChartStyle;
+  defaultPaletteOverride?: ChartPalette;
+  defaultStyleOverride?: ChartStyle;
+  saveEndpoint?: string;
+  showReset?: boolean;
 };
 
-const defaultPalette: ChartPalette = {
-  accent: "#5f8b7a",
-  accentSoft: "#5f8b7a",
-  booleanYes: "#5ce695",
-  booleanNo: "#f98c80",
-  scaleLow: "#ffeacc",
-  scaleHigh: "#ff813d",
-};
+const defaultPalette = defaultThemeDefaults.chart_palette;
+const defaultStyle = defaultThemeDefaults.chart_style;
 
-function mergePalette(value?: ChartPalette | null): ChartPalette {
+function mergePalette(value?: ChartPalette | null, fallback?: ChartPalette): ChartPalette {
+  const base = fallback ?? defaultPalette;
   return {
-    accent: value?.accent || defaultPalette.accent,
-    accentSoft: value?.accentSoft || value?.accent || defaultPalette.accentSoft,
-    booleanYes: value?.booleanYes || defaultPalette.booleanYes,
-    booleanNo: value?.booleanNo || defaultPalette.booleanNo,
-    scaleLow: value?.scaleLow || defaultPalette.scaleLow,
-    scaleHigh: value?.scaleHigh || defaultPalette.scaleHigh,
+    accent: value?.accent || base.accent,
+    accentSoft: value?.accentSoft || value?.accent || base.accentSoft,
+    booleanYes: value?.booleanYes || base.booleanYes,
+    booleanNo: value?.booleanNo || base.booleanNo,
+    scaleLow: value?.scaleLow || base.scaleLow,
+    scaleHigh: value?.scaleHigh || base.scaleHigh,
   };
 }
 
@@ -44,12 +49,30 @@ function hexToRgba(hex: string, alpha: number, fallback: string) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export default function ThemeForm({ profile }: ThemeFormProps) {
-  const [chartStyle, setChartStyle] = useState<ChartStyle>(
-    profile?.chart_style === "brush" || profile?.chart_style === "solid" ? profile.chart_style : "gradient",
-  );
+export default function ThemeForm({
+  profile,
+  title = "Chart Theme",
+  description = "Customize the appearance of your insights charts and data visualizations.",
+  readOnly = false,
+  paletteOverride,
+  styleOverride,
+  defaultPaletteOverride,
+  defaultStyleOverride,
+  saveEndpoint = "/api/profile",
+  showReset = true,
+}: ThemeFormProps) {
+  const resolvedDefaultPalette = defaultPaletteOverride ?? defaultPalette;
+  const resolvedDefaultStyle = defaultStyleOverride ?? defaultStyle;
+  const [chartStyle, setChartStyle] = useState<ChartStyle>(() => {
+    if (styleOverride) {
+      return styleOverride;
+    }
+    return profile?.chart_style === "brush" || profile?.chart_style === "solid"
+      ? profile.chart_style
+      : resolvedDefaultStyle;
+  });
   const [chartPalette, setChartPalette] = useState<ChartPalette>(() =>
-    mergePalette((profile?.chart_palette as ChartPalette | null) ?? null),
+    mergePalette(paletteOverride ?? ((profile?.chart_palette as ChartPalette | null) ?? null), resolvedDefaultPalette),
   );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -136,6 +159,7 @@ export default function ThemeForm({ profile }: ThemeFormProps) {
     chartPalette?: ChartPalette;
     chartStyle?: ChartStyle;
   }) => {
+    if (readOnly) return;
     const payload = {
       chart_palette: updates?.chartPalette ?? chartPalette,
       chart_style: updates?.chartStyle ?? chartStyle,
@@ -143,7 +167,7 @@ export default function ThemeForm({ profile }: ThemeFormProps) {
 
     setSaving(true);
     setMessage(null);
-    const res = await fetch("/api/profile", {
+    const res = await fetch(saveEndpoint, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -159,27 +183,30 @@ export default function ThemeForm({ profile }: ThemeFormProps) {
   };
 
   const handlePaletteChange = (key: keyof ChartPalette, value: string) => {
-    const next = mergePalette({ ...chartPalette, [key]: value });
+    if (readOnly) return;
+    const next = mergePalette({ ...chartPalette, [key]: value }, resolvedDefaultPalette);
     setChartPalette(next);
     void saveTheme({ chartPalette: next });
   };
 
   const handleChartStyleChange = (value: ChartStyle) => {
+    if (readOnly) return;
     setChartStyle(value);
     void saveTheme({ chartStyle: value });
   };
 
   const handlePaletteReset = () => {
-    const next = mergePalette(defaultPalette);
+    if (readOnly) return;
+    const next = mergePalette(resolvedDefaultPalette, resolvedDefaultPalette);
     setChartPalette(next);
     void saveTheme({ chartPalette: next });
   };
 
   return (
     <section className="bujo-card bujo-torn">
-      <h2 className="text-xl font-semibold text-gray-900">Chart Theme</h2>
+      <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
       <p className="text-sm text-gray-700">
-        Customize the appearance of your insights charts and data visualizations.
+        {description}
       </p>
 
       <div className="mt-6 space-y-4 rounded-xl border border-dashed border-[var(--bujo-border)] bg-white/70 p-4 shadow-inner">
@@ -190,13 +217,16 @@ export default function ThemeForm({ profile }: ThemeFormProps) {
               Override the default palette used in insights charts.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handlePaletteReset}
-            className="bujo-btn-secondary w-full justify-center text-sm sm:w-auto"
-          >
-            Reset to defaults
-          </button>
+          {showReset && (
+            <button
+              type="button"
+              onClick={handlePaletteReset}
+              className="bujo-btn-secondary w-full justify-center text-sm sm:w-auto"
+              disabled={readOnly}
+            >
+              Reset to defaults
+            </button>
+          )}
         </div>
         <div className="grid gap-3">
           <div className="space-y-2">
@@ -214,11 +244,12 @@ export default function ThemeForm({ profile }: ThemeFormProps) {
                       type="button"
                       onClick={() => handleChartStyleChange(value)}
                       aria-pressed={isActive}
+                      disabled={readOnly}
                       className={`group flex h-full w-full flex-col gap-3 rounded-2xl border px-4 py-4 text-left shadow-sm transition ${
                         isActive
                           ? "border-[var(--bujo-accent-ink)] bg-amber-50/70 text-[var(--bujo-accent-ink)] shadow-md ring-2 ring-[var(--bujo-accent-ink)] ring-offset-2 ring-offset-[#fffbf4]"
                           : "border-gray-200 bg-white text-gray-800 hover:border-[var(--bujo-border)] hover:bg-amber-50/40"
-                      }`}
+                      } ${readOnly ? "cursor-not-allowed opacity-70" : ""}`}
                     >
                       <div className={`${previewClass} relative h-20 w-full overflow-hidden rounded-xl text-[var(--bujo-accent-ink)] shadow-sm p-3`}>
                         <div
@@ -305,8 +336,9 @@ export default function ThemeForm({ profile }: ThemeFormProps) {
                   type="color"
                   value={chartPalette[key]}
                   onChange={(e) => handlePaletteChange(key, e.target.value)}
-                  className="h-12 w-16 cursor-pointer rounded-md border border-gray-200 bg-white p-1 shadow-sm"
+                  className={`h-12 w-16 rounded-md border border-gray-200 bg-white p-1 shadow-sm ${readOnly ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}
                   aria-label={`${label} color`}
+                  disabled={readOnly}
                 />
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-gray-900">{chartPalette[key]}</p>
@@ -317,7 +349,7 @@ export default function ThemeForm({ profile }: ThemeFormProps) {
           ))}
         </div>
       </div>
-      {message && <p className="bujo-message mt-3 text-sm">{message}</p>}
+      {message && !readOnly && <p className="bujo-message mt-3 text-sm">{message}</p>}
     </section>
   );
 }

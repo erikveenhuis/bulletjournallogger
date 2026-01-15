@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Category, QuestionTemplate, UserQuestion } from "@/lib/types";
 
 type Props = {
@@ -14,9 +15,16 @@ export default function TemplatesClient({
   templates,
   userQuestions,
 }: Props) {
+  const [mounted, setMounted] = useState(false);
+  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
   const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   const selectedTemplateIds = new Set(userQuestions.map((u) => u.template_id));
 
@@ -39,14 +47,19 @@ export default function TemplatesClient({
     window.location.reload();
   };
 
-  return (
-    <section className="bujo-card bujo-torn">
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900">Browse templates</h2>
-          <p className="text-sm text-gray-700">Search categories and add questions to your daily list.</p>
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border-2 border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-6 shadow-2xl">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Browse questions</h2>
+            <p className="text-sm text-gray-700">Search categories and add questions to your daily list.</p>
+          </div>
+          <button onClick={() => setOpen(false)} className="bujo-btn-secondary w-full justify-center text-sm md:w-auto">
+            Close
+          </button>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <input
             placeholder="Search"
             value={query}
@@ -66,37 +79,54 @@ export default function TemplatesClient({
             ))}
           </select>
         </div>
-      </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {filtered.map((t) => (
-          <div key={t.id} className="bujo-question space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{t.title}</p>
-                <p className="text-xs text-gray-600">
-                  {t.answer_types?.type ?? "unknown"} •{" "}
-                  {categories.find((c) => c.id === t.category_id)?.name ||
-                    "Uncategorized"}
-                </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {filtered.map((t) => (
+            <div key={t.id} className="bujo-question space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{t.title}</p>
+                  <p className="text-xs text-gray-600">
+                    {t.answer_types?.type ?? "unknown"} •{" "}
+                    {categories.find((c) => c.id === t.category_id)?.name ||
+                      "Uncategorized"}
+                  </p>
+                </div>
+                <button
+                  disabled={selectedTemplateIds.has(t.id) || loadingId === t.id}
+                  onClick={() => addTemplate(t.id)}
+                  className="bujo-btn text-xs disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {selectedTemplateIds.has(t.id)
+                    ? "Added"
+                    : loadingId === t.id
+                      ? "Adding..."
+                      : "Add"}
+                </button>
               </div>
-              <button
-                disabled={selectedTemplateIds.has(t.id) || loadingId === t.id}
-                onClick={() => addTemplate(t.id)}
-                className="bujo-btn text-xs disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {selectedTemplateIds.has(t.id)
-                  ? "Added"
-                  : loadingId === t.id
-                    ? "Adding..."
-                    : "Add"}
-              </button>
             </div>
-          </div>
-        ))}
-        {filtered.length === 0 && (
-          <p className="text-sm text-gray-600">No templates match.</p>
-        )}
+          ))}
+          {filtered.length === 0 && (
+            <p className="text-sm text-gray-600">No templates match.</p>
+          )}
+        </div>
       </div>
-    </section>
+    </div>
+  );
+
+  return (
+    <>
+      <section className="bujo-card bujo-torn">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Browse questions</h2>
+            <p className="text-sm text-gray-700">Search categories and add questions to your daily list.</p>
+          </div>
+          <button onClick={() => setOpen(true)} className="bujo-btn text-sm md:w-auto">
+            Browse questions
+          </button>
+        </div>
+      </section>
+      {open && mounted ? createPortal(modalContent, document.body) : null}
+    </>
   );
 }

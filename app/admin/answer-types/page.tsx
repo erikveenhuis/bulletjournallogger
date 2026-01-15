@@ -34,36 +34,23 @@ export default async function AdminAnswerTypesPage() {
   }
 
   const { data: answerTypes } = await supabase.from("answer_types").select("*").order("name");
-  const { data: templateTypes } = await supabase.from("question_templates").select("answer_type_id");
-
-  const usageMap = new Map<string, number>();
-  (templateTypes as { answer_type_id: string }[] | null)?.forEach((row) => {
-    const current = usageMap.get(row.answer_type_id) ?? 0;
-    usageMap.set(row.answer_type_id, current + 1);
-  });
-
-  const answerTypesWithUsage = (answerTypes as AnswerType[] | null)?.map((at) => ({
-    ...at,
-    usageCount: usageMap.get(at.id) ?? 0,
-  }));
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-[var(--bujo-ink)]">Admin: answer types</h1>
-          <p className="text-sm text-[var(--bujo-subtle)]">View usage, edit existing types, or remove unused ones.</p>
+          <p className="text-sm text-[var(--bujo-subtle)]">
+            Set global display defaults and allowed overrides for each answer type.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/admin" className="bujo-btn-secondary text-sm">
             Back to admin
           </Link>
-          <Link href="/admin/answer-types/new" className="bujo-btn text-sm">
-            Add answer type
-          </Link>
         </div>
       </div>
-      <AnswerTypesClient answerTypes={answerTypesWithUsage || []} />
+      <AnswerTypesClient answerTypes={(answerTypes as AnswerType[] | null) || []} />
     </div>
   );
 }

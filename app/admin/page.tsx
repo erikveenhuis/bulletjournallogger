@@ -5,6 +5,11 @@ export const dynamic = "force-dynamic";
 
 const adminSections = [
   {
+    href: "/admin/theme",
+    title: "Theme",
+    description: "Update the global chart palette defaults.",
+  },
+  {
     href: "/admin/categories",
     title: "Categories",
     description: "Create, rename, and remove categories for questions.",
@@ -17,7 +22,7 @@ const adminSections = [
   {
     href: "/admin/answer-types",
     title: "Answer Types",
-    description: "Manage answer types for yes/no list questions.",
+    description: "Set default displays and allowed overrides per answer type.",
   },
   {
     href: "/admin/users",

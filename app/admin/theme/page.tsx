@@ -1,10 +1,11 @@
 import Link from "next/link";
-import AnswerTypeForm from "../answer-type-form";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getThemeDefaults } from "@/lib/theme-defaults";
+import ThemeForm from "../../(site)/profile/theme-form";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminAnswerTypeCreatePage() {
+export default async function AdminThemePage() {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -32,21 +33,26 @@ export default async function AdminAnswerTypeCreatePage() {
     );
   }
 
+  const themeDefaults = await getThemeDefaults();
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-[var(--bujo-ink)]">Add answer type</h1>
-          <p className="text-sm text-[var(--bujo-subtle)]">Create a reusable answer type for templates.</p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/admin/answer-types" className="bujo-btn-secondary text-sm">
-            Back to answer types
-          </Link>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold text-gray-900">Global theme</h1>
+        <p className="text-sm text-gray-600">
+          Set the default chart palette and style for new accounts.
+        </p>
       </div>
 
-      <AnswerTypeForm mode="create" />
+      <ThemeForm
+        profile={{
+          chart_palette: themeDefaults.chart_palette,
+          chart_style: themeDefaults.chart_style,
+        }}
+        title="Default chart theme"
+        description="Applies to new users and to reset actions."
+        saveEndpoint="/api/admin/theme-defaults"
+      />
     </div>
   );
 }

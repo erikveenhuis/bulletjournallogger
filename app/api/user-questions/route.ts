@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getEffectiveUser, getEffectiveSupabaseClient } from "@/lib/auth";
+import { getEffectiveUser, getEffectiveSupabaseClient, getEffectiveAdminStatus, isImpersonating } from "@/lib/auth";
 import type { DisplayOption } from "@/lib/types";
 
 async function requireUser() {
@@ -38,9 +38,31 @@ async function fetchTemplate(
 ) {
   return supabase
     .from("question_templates")
-    .select("id, answer_type_id, allowed_answer_type_ids, default_display_option, allowed_display_options, default_colors")
+    .select("id, answer_type_id, created_by, answer_types(default_display_option, allowed_display_options)")
     .eq("id", templateId)
     .maybeSingle();
+}
+
+async function getAccountTier(
+  supabase: Awaited<ReturnType<typeof getEffectiveSupabaseClient>>,
+  userId: string,
+) {
+  const isCurrentlyImpersonating = await isImpersonating();
+  if (!isCurrentlyImpersonating && (await getEffectiveAdminStatus())) {
+    return 4;
+  }
+  const { data } = await supabase
+    .from("profiles")
+    .select("account_tier, is_admin")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (data?.is_admin) {
+    return 4;
+  }
+  if (typeof data?.account_tier === "number") {
+    return data.account_tier;
+  }
+  return 0;
 }
 
 export async function GET() {
@@ -51,7 +73,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("user_questions")
     .select(
-      "*, template:question_templates(*, categories(name), answer_types(*)), answer_type_override:answer_types!answer_type_override_id(*)",
+      "*, template:question_templates(*, categories(name), answer_types(*))",
     )
     .eq("user_id", user.id)
     .eq("is_active", true)
@@ -72,7 +94,6 @@ export async function POST(request: Request) {
     template_id,
     custom_label,
     sort_order = 0,
-    answer_type_override_id,
     display_option_override,
     color_palette,
   } = body;
@@ -88,36 +109,50 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }
 
-  const allowedAnswerTypes =
-    Array.isArray(template.allowed_answer_type_ids) && template.allowed_answer_type_ids.length > 0
-      ? template.allowed_answer_type_ids
-      : [template.answer_type_id];
+  const accountTier = await getAccountTier(supabase, user.id);
 
-  if (answer_type_override_id) {
-    if (!allowedAnswerTypes.includes(answer_type_override_id)) {
-      return NextResponse.json({ error: "answer_type_override_id is not allowed for this question" }, { status: 400 });
-    }
+  if (color_palette !== undefined && accountTier < 2) {
+    return NextResponse.json(
+      { error: "Upgrade to use color overrides." },
+      { status: 403 },
+    );
+  }
 
-    // Validate that the answer type exists
-    const { data: answerType, error: answerTypeError } = await supabase
-      .from("answer_types")
+  const isGlobalTemplate = !template.created_by || template.created_by !== user.id;
+  if (isGlobalTemplate && accountTier < 1) {
+    const { data: existing } = await supabase
+      .from("user_questions")
       .select("id")
-      .eq("id", answer_type_override_id)
+      .eq("user_id", user.id)
+      .eq("template_id", template_id)
       .maybeSingle();
-
-    if (answerTypeError) {
-      return NextResponse.json({ error: answerTypeError.message }, { status: 400 });
-    }
-
-    if (!answerType) {
-      return NextResponse.json({ error: "Invalid answer_type_override_id: answer type does not exist" }, { status: 400 });
+    if (!existing) {
+      const { data: currentQuestions, error: countError } = await supabase
+        .from("user_questions")
+        .select("id, template:question_templates(created_by)")
+        .eq("user_id", user.id)
+        .eq("is_active", true);
+      if (countError) {
+        return NextResponse.json({ error: countError.message }, { status: 400 });
+      }
+      const globalCount = (currentQuestions || []).filter((row) => {
+        const template = Array.isArray(row.template) ? row.template[0] : row.template;
+        return !template?.created_by || template.created_by !== user.id;
+      }).length;
+      if (globalCount >= 3) {
+        return NextResponse.json(
+          { error: "Upgrade to select more than 3 global questions." },
+          { status: 403 },
+        );
+      }
     }
   }
 
+  const defaultDisplay = (template.answer_types?.default_display_option as DisplayOption) || "graph";
   const allowedDisplays =
-    Array.isArray(template.allowed_display_options) && template.allowed_display_options.length > 0
-      ? template.allowed_display_options
-      : [template.default_display_option];
+    Array.isArray(template.answer_types?.allowed_display_options) && template.answer_types?.allowed_display_options.length > 0
+      ? template.answer_types.allowed_display_options
+      : [defaultDisplay];
 
   if (
     display_option_override &&
@@ -141,7 +176,6 @@ export async function POST(request: Request) {
         custom_label,
         sort_order,
         is_active: true,
-        answer_type_override_id: answer_type_override_id ?? null,
         display_option_override: (display_option_override as DisplayOption | null) ?? null,
         color_palette: normalizedPalette,
       },
@@ -166,7 +200,6 @@ export async function PUT(request: Request) {
     custom_label,
     sort_order,
     is_active,
-    answer_type_override_id,
     display_option_override,
     color_palette,
   } = body;
@@ -206,40 +239,13 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }
 
-  const allowedAnswerTypes =
-    Array.isArray(template.allowed_answer_type_ids) && template.allowed_answer_type_ids.length > 0
-      ? template.allowed_answer_type_ids
-      : [template.answer_type_id];
+  const accountTier = await getAccountTier(supabase, user.id);
 
-  if (answer_type_override_id !== undefined) {
-    if (answer_type_override_id && !allowedAnswerTypes.includes(answer_type_override_id)) {
-      return NextResponse.json({ error: "answer_type_override_id is not allowed for this question" }, { status: 400 });
-    }
-
-    if (answer_type_override_id) {
-      // Validate that the answer type exists
-      const { data: answerType, error: answerTypeError } = await supabase
-        .from("answer_types")
-        .select("id")
-        .eq("id", answer_type_override_id)
-        .maybeSingle();
-
-      if (answerTypeError) {
-        return NextResponse.json({ error: answerTypeError.message }, { status: 400 });
-      }
-
-      if (!answerType) {
-        return NextResponse.json({ error: "Invalid answer_type_override_id: answer type does not exist" }, { status: 400 });
-      }
-    }
-
-    updates.answer_type_override_id = answer_type_override_id ?? null;
-  }
-
+  const defaultDisplay = (template.answer_types?.default_display_option as DisplayOption) || "graph";
   const allowedDisplays =
-    Array.isArray(template.allowed_display_options) && template.allowed_display_options.length > 0
-      ? template.allowed_display_options
-      : [template.default_display_option];
+    Array.isArray(template.answer_types?.allowed_display_options) && template.answer_types?.allowed_display_options.length > 0
+      ? template.answer_types.allowed_display_options
+      : [defaultDisplay];
 
   if (display_option_override !== undefined) {
     if (
@@ -255,6 +261,12 @@ export async function PUT(request: Request) {
   }
 
   if (color_palette !== undefined) {
+    if (accountTier < 2) {
+      return NextResponse.json(
+        { error: "Upgrade to use color overrides." },
+        { status: 403 },
+      );
+    }
     updates.color_palette = normalizePalette(color_palette);
   }
 

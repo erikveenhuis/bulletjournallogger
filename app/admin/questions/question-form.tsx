@@ -12,61 +12,31 @@ type Props = {
   answerTypes: AnswerType[];
 };
 
-const displayOptions: DisplayOption[] = ["graph", "list", "grid", "count"];
-
 export default function QuestionForm({ mode, initialData, categories, answerTypes }: Props) {
   const router = useRouter();
   const [title, setTitle] = useState(initialData?.title ?? "");
   const [categoryId, setCategoryId] = useState(initialData?.category_id ?? "");
   const [answerTypeId, setAnswerTypeId] = useState(initialData?.answer_type_id ?? "");
   const [meta, setMeta] = useState(() => JSON.stringify(initialData?.meta ?? {}));
-  const [allowedAnswerTypeIds, setAllowedAnswerTypeIds] = useState<string[]>(
-    initialData?.allowed_answer_type_ids || [],
-  );
-  const [defaultDisplayOption, setDefaultDisplayOption] = useState<DisplayOption>(
-    (initialData?.default_display_option as DisplayOption) || "graph",
-  );
-  const [allowedDisplayOptions, setAllowedDisplayOptions] = useState<DisplayOption[]>(
-    (initialData?.allowed_display_options as DisplayOption[]) || ["graph"],
-  );
-  const [defaultColors, setDefaultColors] = useState(() =>
-    JSON.stringify(initialData?.default_colors ?? {}),
-  );
   const [isActive, setIsActive] = useState(initialData?.is_active ?? true);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const toggleAllowedAnswerType = (id: string) => {
-    if (allowedAnswerTypeIds.includes(id)) {
-      setAllowedAnswerTypeIds((prev) => prev.filter((val) => val !== id));
-    } else {
-      setAllowedAnswerTypeIds((prev) => [...prev, id]);
-    }
-  };
-
-  const toggleDisplayOption = (value: DisplayOption) => {
-    if (allowedDisplayOptions.includes(value)) {
-      const next = allowedDisplayOptions.filter((v) => v !== value);
-      setAllowedDisplayOptions(next.length === 0 ? [defaultDisplayOption] : next);
-    } else {
-      setAllowedDisplayOptions([...allowedDisplayOptions, value]);
-    }
-  };
-
-  const normalizedAllowedTypes = useMemo(() => {
-    if (!answerTypeId) return [];
-    return Array.from(new Set([answerTypeId, ...allowedAnswerTypeIds.filter(Boolean)]));
-  }, [answerTypeId, allowedAnswerTypeIds]);
-
-  const normalizedDisplayOptions = useMemo(() => {
-    return allowedDisplayOptions.length > 0
-      ? Array.from(new Set([...allowedDisplayOptions, defaultDisplayOption]))
-      : [defaultDisplayOption];
-  }, [allowedDisplayOptions, defaultDisplayOption]);
-
   const selectedAnswerTypes = useMemo(() => {
-    return answerTypes.filter((at) => normalizedAllowedTypes.includes(at.id));
-  }, [answerTypes, normalizedAllowedTypes]);
+    if (!answerTypeId) return [];
+    return answerTypes.filter((at) => at.id === answerTypeId);
+  }, [answerTypes, answerTypeId]);
+
+  const displayDefaults = useMemo(() => {
+    const selected = selectedAnswerTypes[0];
+    const defaultDisplay = (selected?.default_display_option as DisplayOption) || "graph";
+    const allowed = Array.isArray(selected?.allowed_display_options) ? selected?.allowed_display_options : [];
+    const normalized = allowed.length > 0 ? allowed : [defaultDisplay];
+    return {
+      defaultDisplayOption: defaultDisplay,
+      allowedDisplayOptions: normalized.includes(defaultDisplay) ? normalized : [...normalized, defaultDisplay],
+    };
+  }, [selectedAnswerTypes]);
 
   const submit = async () => {
     setMessage(null);
@@ -87,19 +57,6 @@ export default function QuestionForm({ mode, initialData, categories, answerType
       return;
     }
 
-    let parsedColors: Record<string, unknown> = {};
-    if (defaultColors.trim()) {
-      try {
-        const parsed = JSON.parse(defaultColors);
-        if (typeof parsed === "object" && !Array.isArray(parsed)) {
-          parsedColors = parsed;
-        }
-      } catch {
-        setMessage("Default colors must be valid JSON");
-        return;
-      }
-    }
-
     setSubmitting(true);
     const res = await fetch("/api/question-templates", {
       method: mode === "create" ? "POST" : "PUT",
@@ -111,10 +68,6 @@ export default function QuestionForm({ mode, initialData, categories, answerType
         meta: metaJson,
         is_active: mode === "edit" ? isActive : true,
         answer_type_id: answerTypeId,
-        allowed_answer_type_ids: normalizedAllowedTypes,
-        default_display_option: defaultDisplayOption,
-        allowed_display_options: normalizedDisplayOptions,
-        default_colors: parsedColors,
       }),
     });
     const data = await res.json();
@@ -136,104 +89,56 @@ export default function QuestionForm({ mode, initialData, categories, answerType
         </h2>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
-            <input
-              placeholder="Title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="bujo-input"
-            />
-            <select
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              className="bujo-input"
-            >
-              <option value="">Select category</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={answerTypeId}
-              onChange={(e) => {
-                const newAnswerTypeId = e.target.value;
-                setAnswerTypeId(newAnswerTypeId);
-                // Ensure the new answer type is included in allowed types
-                if (newAnswerTypeId && !normalizedAllowedTypes.includes(newAnswerTypeId)) {
-                  setAllowedAnswerTypeIds((prev) => [...prev, newAnswerTypeId]);
-                }
-              }}
-              className="bujo-input"
-            >
-              <option value="">Select answer type (required)</option>
-              {answerTypes.map((at) => (
-                <option key={at.id} value={at.id}>
-                  {at.name} ({at.type})
-                </option>
-              ))}
-            </select>
-            <div className="space-y-1 rounded-md border border-[var(--bujo-border)] p-2 text-xs">
-              <p className="font-semibold text-[var(--bujo-ink)]">Allowed answer types</p>
-              <p className="text-[var(--bujo-subtle)]">Pick alternates users can switch to.</p>
-              <div className="grid grid-cols-2 gap-2">
+            <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
+              <span className="font-medium">Question prompt</span>
+              <input
+                placeholder="e.g. How did today feel?"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="bujo-input"
+              />
+              <span className="text-xs text-[var(--bujo-subtle)]">What the user will see and answer.</span>
+            </label>
+            <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
+              <span className="font-medium">Category</span>
+              <select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                className="bujo-input"
+              >
+                <option value="">Select category</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-[var(--bujo-subtle)]">Groups the question in admin and user views.</span>
+            </label>
+            <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
+              <span className="font-medium">Answer type</span>
+              <select
+                value={answerTypeId}
+                onChange={(e) => {
+                  setAnswerTypeId(e.target.value);
+                }}
+                className="bujo-input"
+              >
+                <option value="">Select answer type (required)</option>
                 {answerTypes.map((at) => {
-                  const checked = normalizedAllowedTypes.includes(at.id);
+                  const isInactive = at.is_active === false;
+                  const isSelected = at.id === answerTypeId;
                   return (
-                    <label key={at.id} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleAllowedAnswerType(at.id)}
-                        disabled={at.id === answerTypeId}
-                        className="bujo-range"
-                      />
-                      <span>
-                        {at.name} <span className="text-[var(--bujo-subtle)]">({at.type})</span>
-                      </span>
-                    </label>
+                    <option key={at.id} value={at.id} disabled={isInactive && !isSelected}>
+                      {at.name} ({at.type}){isInactive ? " (inactive)" : ""}
+                    </option>
                   );
                 })}
-              </div>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[var(--bujo-ink)]">Default display</label>
-                <select
-                  value={defaultDisplayOption}
-                  onChange={(e) => {
-                    const newValue = e.target.value as DisplayOption;
-                    setDefaultDisplayOption(newValue);
-                    if (!allowedDisplayOptions.includes(newValue)) {
-                      setAllowedDisplayOptions([...allowedDisplayOptions, newValue]);
-                    }
-                  }}
-                  className="bujo-input text-sm"
-                >
-                  {displayOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-semibold text-[var(--bujo-ink)]">Allowed displays</p>
-                <div className="flex flex-wrap gap-2">
-                  {displayOptions.map((opt) => (
-                    <label key={opt} className="flex items-center gap-1 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={allowedDisplayOptions.includes(opt)}
-                        onChange={() => toggleDisplayOption(opt)}
-                        className="bujo-range"
-                      />
-                      <span>{opt}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
+              </select>
+              <span className="text-xs text-[var(--bujo-subtle)]">
+                Controls the input widget and preview behavior.
+              </span>
+            </label>
             {mode === "edit" && (
               <label className="flex items-center gap-2 text-sm text-[var(--bujo-ink)]">
                 <input
@@ -247,20 +152,19 @@ export default function QuestionForm({ mode, initialData, categories, answerType
             )}
           </div>
           <div className="space-y-2">
-            <textarea
-              placeholder='Meta JSON e.g. {}'
-              value={meta}
-              onChange={(e) => setMeta(e.target.value)}
-              rows={5}
-              className="bujo-input"
-            />
-            <textarea
-              placeholder='Default colors JSON e.g. {"accent":"#5f8b7a"}'
-              value={defaultColors}
-              onChange={(e) => setDefaultColors(e.target.value)}
-              rows={4}
-              className="bujo-input text-xs"
-            />
+            <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
+              <span className="font-medium">Meta JSON</span>
+              <textarea
+                placeholder='e.g. {"min":0,"max":10}'
+                value={meta}
+                onChange={(e) => setMeta(e.target.value)}
+                rows={5}
+                className="bujo-input"
+              />
+              <span className="text-xs text-[var(--bujo-subtle)]">
+                Per-question settings consumed by the answer type.
+              </span>
+            </label>
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={submit}
@@ -287,9 +191,8 @@ export default function QuestionForm({ mode, initialData, categories, answerType
         <PreviewSection
           questionTitle={title || "Preview Question"}
           answerTypes={selectedAnswerTypes}
-          displayOptions={normalizedDisplayOptions}
-          defaultDisplayOption={defaultDisplayOption}
-          defaultColors={defaultColors}
+          displayOptions={displayDefaults.allowedDisplayOptions}
+          defaultDisplayOption={displayDefaults.defaultDisplayOption}
           answerTypeId={answerTypeId}
         />
       )}

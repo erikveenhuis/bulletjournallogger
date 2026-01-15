@@ -1,4 +1,4 @@
-import { getEffectiveUser } from "@/lib/auth";
+import { getEffectiveUser, getEffectiveAdminStatus, isImpersonating } from "@/lib/auth";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +13,9 @@ export default async function ProfilePage() {
       </div>
     );
   }
+
+  const isCurrentlyImpersonating = await isImpersonating();
+  const isAdmin = !isCurrentlyImpersonating && (await getEffectiveAdminStatus());
 
   return (
     <div className="space-y-8">
@@ -35,7 +38,7 @@ export default async function ProfilePage() {
       <div className="bujo-card bujo-torn">
         <div className="flex flex-col gap-4">
           <h2 className="text-xl font-semibold text-gray-900">Choose a section</h2>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Link
               href="/profile/reminders"
               className="group block rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:border-[var(--bujo-accent-ink)] hover:bg-[var(--bujo-accent)]/5 hover:shadow-md"
@@ -88,6 +91,25 @@ export default async function ProfilePage() {
                   <h3 className="text-lg font-semibold text-gray-900">Theme</h3>
                   <p className="text-sm text-gray-600">
                     Customize chart colors and visualization styles.
+                  </p>
+                </div>
+              </div>
+            </Link>
+
+            <Link
+              href="/profile/account"
+              className="group block rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:border-[var(--bujo-accent-ink)] hover:bg-[var(--bujo-accent)]/5 hover:shadow-md"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--bujo-accent)]/10 text-[var(--bujo-accent-ink)]">
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A4 4 0 017 21h10a4 4 0 001.879-3.196M12 3v4m0 0l3-3m-3 3L9 4m8 4a4 4 0 01-4 4H9a4 4 0 01-4-4" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Account</h3>
+                  <p className="text-sm text-gray-600">
+                    {isAdmin ? "Manage account access." : "Upgrade or downgrade your account access."}
                   </p>
                 </div>
               </div>

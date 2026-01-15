@@ -19,7 +19,7 @@ export async function GET(request: Request) {
 
   let query = supabase
     .from("answers")
-    .select("*, question_templates(title,category_id, categories(name), answer_types(*))")
+    .select("*, answer_types(*), question_templates(title,category_id, categories(name), answer_types(*))")
     .eq("user_id", user.id)
     .order("question_date", { ascending: false });
   if (start) query = query.gte("question_date", start);
@@ -43,6 +43,7 @@ export async function POST(request: Request) {
     answers: Array<{
       template_id: string;
       type: string;
+      answer_type_id?: string | null;
       value: unknown;
       prompt_snapshot?: string;
       category_snapshot?: string;
@@ -86,10 +87,36 @@ export async function POST(request: Request) {
 
   // Save non-empty answers
   if (answersToSave.length > 0) {
+    const missingTypeIds = Array.from(
+      new Set(
+        answersToSave
+          .filter((a) => !a.answer_type_id)
+          .map((a) => a.template_id),
+      ),
+    );
+    let templateAnswerTypeMap: Record<string, string> = {};
+    if (missingTypeIds.length > 0) {
+      const { data: templates, error: templateError } = await supabase
+        .from("question_templates")
+        .select("id, answer_type_id")
+        .in("id", missingTypeIds);
+      if (templateError) {
+        return NextResponse.json({ error: templateError.message }, { status: 400 });
+      }
+      templateAnswerTypeMap = (templates || []).reduce<Record<string, string>>((acc, row) => {
+        if (row?.id && row?.answer_type_id) {
+          acc[row.id] = row.answer_type_id as string;
+        }
+        return acc;
+      }, {});
+    }
+
     const rows = answersToSave.map((a) => {
+      const resolvedAnswerTypeId = a.answer_type_id ?? templateAnswerTypeMap[a.template_id] ?? null;
       const base = {
         user_id: user.id,
         template_id: a.template_id,
+        answer_type_id: resolvedAnswerTypeId,
         question_date,
         prompt_snapshot: a.prompt_snapshot ?? null,
         category_snapshot: a.category_snapshot ?? null,
@@ -104,13 +131,14 @@ export async function POST(request: Request) {
             return { ...base, bool_value: false };
           }
           if (Array.isArray(a.value)) {
-            return { ...base, text_value: JSON.stringify(a.value) };
+            const normalized = a.value.map((val) => String(val));
+            return { ...base, text_value: JSON.stringify(normalized) };
           }
           // If value is true but not an array yet, store empty array
           if (a.value === true) {
             return { ...base, text_value: JSON.stringify([]) };
           }
-          return { ...base, text_value: JSON.stringify(a.value) };
+          return { ...base, text_value: JSON.stringify([]) };
         case "number":
           return { ...base, number_value: Number(a.value) };
         case "scale":

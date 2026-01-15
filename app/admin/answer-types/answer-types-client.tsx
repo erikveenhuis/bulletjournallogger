@@ -1,156 +1,501 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { format, subDays } from "date-fns";
 import { useRouter } from "next/navigation";
-import type { AnswerType } from "@/lib/types";
-import ConfirmDialog from "@/components/confirm-dialog";
-
-type AnswerTypeWithUsage = AnswerType & { usageCount: number };
+import type { AnswerType, DisplayOption } from "@/lib/types";
+import InsightsChart from "@/app/(site)/insights/insights-chart";
 
 type Props = {
-  answerTypes: AnswerTypeWithUsage[];
+  answerTypes: AnswerType[];
+};
+
+const displayOptions: DisplayOption[] = ["graph", "list", "grid", "count"];
+type DraftState = {
+  defaultDisplayOption: DisplayOption;
+  allowedDisplayOptions: DisplayOption[];
+  isActive: boolean;
+  saving: boolean;
+  message: string | null;
+};
+
+type AnswerRow = {
+  id: string;
+  user_id: string;
+  template_id: string;
+  question_date: string;
+  prompt_snapshot: string | null;
+  category_snapshot: string | null;
+  bool_value: boolean | null;
+  number_value: number | null;
+  scale_value: number | null;
+  emoji_value: string | null;
+  text_value: string | null;
+  created_at: string;
+  updated_at: string;
+  question_templates?: {
+    id?: string;
+    title?: string;
+    answer_types?: { type?: string | null; meta?: Record<string, unknown> | null } | null;
+  } | null;
+};
+
+type DemoValue = boolean | number | string | string[] | null;
+
+const getDefaultDisplay = (answerType: AnswerType): DisplayOption =>
+  (answerType.default_display_option as DisplayOption) || "graph";
+
+const getAllowedDisplays = (answerType: AnswerType, fallback: DisplayOption): DisplayOption[] => {
+  const allowed = Array.isArray(answerType.allowed_display_options) ? answerType.allowed_display_options : [];
+  if (allowed.length === 0) return [fallback];
+  return allowed.includes(fallback) ? allowed : [...allowed, fallback];
+};
+
+const generateDemoValues = (answerType: AnswerType, days: number = 7): DemoValue[] => {
+  const random = () => Math.random();
+  const meta = answerType.meta || {};
+  const minNumber = typeof meta.min === "number" ? meta.min : 0;
+  const maxNumber = typeof meta.max === "number" ? meta.max : 100;
+  const minScale = typeof meta.min === "number" ? meta.min : 1;
+  const maxScale = typeof meta.max === "number" ? meta.max : 5;
+  const emojiItems = answerType.items || ["😀", "🙂", "😐", "😞", "😡"];
+  const textSamples = ["Good", "Great", "Okay", "Fine", "Excellent", "Rough", "Calm"];
+  const listItems = answerType.items || [];
+
+  return Array.from({ length: days }).map(() => {
+    switch (answerType.type) {
+      case "boolean":
+        return random() > 0.4;
+      case "number":
+        return Math.round(minNumber + random() * (maxNumber - minNumber));
+      case "scale":
+        return Math.round(minScale + random() * (maxScale - minScale));
+      case "emoji":
+        return emojiItems[Math.floor(random() * emojiItems.length)];
+      case "text":
+        return textSamples[Math.floor(random() * textSamples.length)];
+      case "yes_no_list": {
+        if (listItems.length === 0) return [];
+        return listItems.filter((item) => random() > 0.5).slice(0, listItems.length);
+      }
+      default:
+        return null;
+    }
+  });
+};
+
+const parseDemoValues = (raw: string): { values: DemoValue[]; error: string | null } => {
+  if (!raw.trim()) {
+    return { values: [], error: "Provide a JSON array with 7 values." };
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return { values: [], error: "Demo data must be a JSON array." };
+    }
+    if (parsed.length !== 7) {
+      return { values: [], error: "Provide exactly 7 values." };
+    }
+    return { values: parsed as DemoValue[], error: null };
+  } catch {
+    return { values: [], error: "Demo data must be valid JSON." };
+  }
+};
+
+const buildDemoAnswersFromValues = (
+  answerType: AnswerType,
+  values: DemoValue[],
+  questionTitle: string,
+): AnswerRow[] => {
+  const today = new Date();
+  const meta = answerType.meta || {};
+  const minNumber = typeof meta.min === "number" ? meta.min : 0;
+  const maxNumber = typeof meta.max === "number" ? meta.max : 100;
+  const minScale = typeof meta.min === "number" ? meta.min : 1;
+  const maxScale = typeof meta.max === "number" ? meta.max : 5;
+
+  const toNumber = (value: DemoValue, fallback: number) => {
+    if (typeof value === "number" && !Number.isNaN(value)) return value;
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      return Number.isNaN(parsed) ? fallback : parsed;
+    }
+    return fallback;
+  };
+
+  const toBoolean = (value: DemoValue) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value > 0;
+    if (typeof value === "string") return value.toLowerCase() === "true";
+    return false;
+  };
+
+  const toStringValue = (value: DemoValue, fallback: string) => {
+    if (typeof value === "string") return value;
+    if (value === null || typeof value === "undefined") return fallback;
+    return String(value);
+  };
+
+  const toStringArray = (value: DemoValue): string[] => {
+    if (Array.isArray(value)) {
+      return value.filter((entry) => typeof entry === "string");
+    }
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((entry) => typeof entry === "string");
+        }
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
+  return values.map((value, index) => {
+    const date = subDays(today, values.length - 1 - index);
+    const dateStr = format(date, "yyyy-MM-dd");
+    const timestamp = `${dateStr}T00:00:00.000Z`;
+    const templateId = `preview-${answerType.id}`;
+    const baseAnswer: Omit<AnswerRow, "bool_value" | "number_value" | "scale_value" | "emoji_value" | "text_value"> = {
+      id: `preview-${answerType.id}-${index}`,
+      user_id: "preview-user",
+      template_id: templateId,
+      question_date: dateStr,
+      prompt_snapshot: questionTitle,
+      category_snapshot: null,
+      created_at: timestamp,
+      updated_at: timestamp,
+      question_templates: {
+        id: templateId,
+        title: questionTitle,
+        answer_types: {
+          type: answerType.type,
+          meta: answerType.meta || null,
+        },
+      },
+    };
+
+    switch (answerType.type) {
+      case "boolean":
+        return {
+          ...baseAnswer,
+          bool_value: toBoolean(value),
+          number_value: null,
+          scale_value: null,
+          emoji_value: null,
+          text_value: null,
+        };
+      case "number":
+        return {
+          ...baseAnswer,
+          bool_value: null,
+          number_value: Math.min(maxNumber, Math.max(minNumber, toNumber(value, minNumber))),
+          scale_value: null,
+          emoji_value: null,
+          text_value: null,
+        };
+      case "scale":
+        return {
+          ...baseAnswer,
+          bool_value: null,
+          number_value: null,
+          scale_value: Math.min(maxScale, Math.max(minScale, toNumber(value, minScale))),
+          emoji_value: null,
+          text_value: null,
+        };
+      case "emoji":
+        return {
+          ...baseAnswer,
+          bool_value: null,
+          number_value: null,
+          scale_value: null,
+          emoji_value: toStringValue(value, "🙂"),
+          text_value: null,
+        };
+      case "text":
+        return {
+          ...baseAnswer,
+          bool_value: null,
+          number_value: null,
+          scale_value: null,
+          emoji_value: null,
+          text_value: toStringValue(value, "Okay"),
+        };
+      case "yes_no_list": {
+        const selectedItems = toStringArray(value);
+        return {
+          ...baseAnswer,
+          bool_value: selectedItems.length > 0,
+          number_value: null,
+          scale_value: null,
+          emoji_value: null,
+          text_value: selectedItems.length > 0 ? JSON.stringify(selectedItems) : null,
+        };
+      }
+      default:
+        return {
+          ...baseAnswer,
+          bool_value: null,
+          number_value: null,
+          scale_value: null,
+          emoji_value: null,
+          text_value: null,
+        };
+    }
+  });
 };
 
 export default function AnswerTypesClient({ answerTypes }: Props) {
   const router = useRouter();
-  const [query, setQuery] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [demoDataByTypeId, setDemoDataByTypeId] = useState<Record<string, string>>(() => {
+    const next: Record<string, string> = {};
+    answerTypes.forEach((at) => {
+      next[at.id] = JSON.stringify(generateDemoValues(at, 7));
+    });
+    return next;
+  });
+  const [drafts, setDrafts] = useState<Record<string, DraftState>>(() => {
+    const next: Record<string, DraftState> = {};
+    answerTypes.forEach((at) => {
+      const defaultDisplay = getDefaultDisplay(at);
+      next[at.id] = {
+        defaultDisplayOption: defaultDisplay,
+        allowedDisplayOptions: getAllowedDisplays(at, defaultDisplay),
+        isActive: at.is_active !== false,
+        saving: false,
+        message: null,
+      };
+    });
+    return next;
+  });
+
+  useEffect(() => {
+    setDemoDataByTypeId((prev) => {
+      const next = { ...prev };
+      answerTypes.forEach((at) => {
+        if (!next[at.id]) {
+          next[at.id] = JSON.stringify(generateDemoValues(at, 7));
+        }
+      });
+      return next;
+    });
+  }, [answerTypes]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return answerTypes;
-    return answerTypes.filter((at) => {
-      const inItems = (at.items ?? []).some((item) => item.toLowerCase().includes(q));
-      const inMeta = JSON.stringify(at.meta ?? {}).toLowerCase().includes(q);
-      return (
-        at.name.toLowerCase().includes(q) ||
-        (at.description?.toLowerCase() ?? "").includes(q) ||
-        at.type.toLowerCase().includes(q) ||
-        inItems ||
-        inMeta
-      );
+    return answerTypes.slice().sort((a, b) => a.name.localeCompare(b.name));
+  }, [answerTypes]);
+
+  const parsedDemoByTypeId = useMemo(() => {
+    const next: Record<string, { values: DemoValue[]; error: string | null }> = {};
+    answerTypes.forEach((at) => {
+      next[at.id] = parseDemoValues(demoDataByTypeId[at.id] ?? "");
     });
-  }, [answerTypes, query]);
+    return next;
+  }, [answerTypes, demoDataByTypeId]);
 
-  const pendingDelete = useMemo(
-    () => answerTypes.find((at) => at.id === pendingDeleteId),
-    [answerTypes, pendingDeleteId],
-  );
+  const updateDraft = (id: string, updates: Partial<DraftState>) => {
+    setDrafts((prev) => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        ...updates,
+        message: Object.prototype.hasOwnProperty.call(updates, "message")
+          ? updates.message ?? null
+          : prev[id]?.message ?? null,
+      },
+    }));
+  };
 
-  const deleteAnswerType = async () => {
-    if (!pendingDeleteId) return;
-    if (pendingDelete?.usageCount && pendingDelete.usageCount > 0) {
-      setMessage("Cannot delete an answer type that is in use.");
-      setPendingDeleteId(null);
+  const setDefaultDisplay = (id: string, value: DisplayOption) => {
+    const current = drafts[id];
+    if (!current) return;
+    const allowed = current.allowedDisplayOptions.includes(value)
+      ? current.allowedDisplayOptions
+      : [...current.allowedDisplayOptions, value];
+    updateDraft(id, { defaultDisplayOption: value, allowedDisplayOptions: allowed, message: null });
+  };
+
+  const toggleAllowedDisplay = (id: string, value: DisplayOption) => {
+    const current = drafts[id];
+    if (!current) return;
+    if (value === current.defaultDisplayOption) {
       return;
     }
-    setDeleting(true);
-    setMessage(null);
+    const allowed = current.allowedDisplayOptions.includes(value)
+      ? current.allowedDisplayOptions.filter((opt) => opt !== value)
+      : [...current.allowedDisplayOptions, value];
+    updateDraft(id, { allowedDisplayOptions: allowed.length > 0 ? allowed : [current.defaultDisplayOption], message: null });
+  };
+
+  const save = async (id: string) => {
+    const draft = drafts[id];
+    if (!draft) return;
+    updateDraft(id, { saving: true, message: null });
     const res = await fetch("/api/answer-types", {
-      method: "DELETE",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: pendingDeleteId }),
+      body: JSON.stringify({
+        id,
+        default_display_option: draft.defaultDisplayOption,
+        allowed_display_options: draft.allowedDisplayOptions,
+        is_active: draft.isActive,
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
-      setMessage(data.error || "Could not delete answer type");
-      setDeleting(false);
-      setPendingDeleteId(null);
+      updateDraft(id, { saving: false, message: data.error || "Could not update display options" });
       return;
     }
-    setPendingDeleteId(null);
+    const updated = data?.answer_type as AnswerType | undefined;
+    if (updated) {
+      const defaultDisplay = getDefaultDisplay(updated);
+      updateDraft(id, {
+        saving: false,
+        message: "Saved",
+        defaultDisplayOption: defaultDisplay,
+        allowedDisplayOptions: getAllowedDisplays(updated, defaultDisplay),
+        isActive: updated.is_active !== false,
+      });
+    } else {
+      updateDraft(id, { saving: false, message: "Saved" });
+    }
     router.refresh();
-  };
-
-  const metaSummary = (meta: AnswerType["meta"]) => {
-    const text = JSON.stringify(meta ?? {});
-    if (text === "{}") return "Meta: none";
-    return text.length > 80 ? `Meta: ${text.slice(0, 77)}...` : `Meta: ${text}`;
-  };
-
-  const itemsSummary = (items: string[] | null) => {
-    if (!items || items.length === 0) return "Items: none";
-    const joined = items.join(", ");
-    return joined.length > 80 ? `Items: ${joined.slice(0, 77)}...` : `Items: ${joined}`;
   };
 
   return (
     <div className="bujo-card bujo-torn">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Existing answer types</h2>
-          <p className="text-sm text-[var(--bujo-subtle)]">Edit on dedicated pages and delete only when unused.</p>
-        </div>
-        <div className="flex gap-2">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter by name, description, type, items, or meta"
-            className="bujo-input w-full max-w-xs text-sm"
-          />
-        </div>
-      </div>
-
-      <div className="mt-4 space-y-3">
+      <div className="space-y-3">
         {filtered.length === 0 ? (
-          <p className="text-sm text-[var(--bujo-subtle)]">No answer types match your filter.</p>
+          <p className="text-sm text-[var(--bujo-subtle)]">No answer types found.</p>
         ) : (
-          filtered.map((at) => (
-            <div
-              key={at.id}
-              className="space-y-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3"
-            >
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div className="space-y-1">
+          filtered.map((at) => {
+            const draft = drafts[at.id];
+            if (!draft) return null;
+            return (
+              <div
+                key={at.id}
+                className="space-y-3 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3"
+              >
+                <div>
                   <p className="text-sm font-semibold text-[var(--bujo-ink)]">{at.name}</p>
-                  {at.description && <p className="text-sm text-[var(--bujo-subtle)]">{at.description}</p>}
-                  <p className="text-xs text-[var(--bujo-subtle)]">{itemsSummary(at.items)}</p>
-                  <p className="text-xs text-[var(--bujo-subtle)]">{metaSummary(at.meta)}</p>
+                  <p className="text-xs text-[var(--bujo-subtle)]">{at.type}</p>
+                  {at.description && <p className="text-xs text-[var(--bujo-subtle)]">{at.description}</p>}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className="bujo-chip text-xs">Type: {at.type}</span>
-                  <span className="bujo-chip text-xs">
-                    {at.usageCount > 0 ? `${at.usageCount} template${at.usageCount === 1 ? "" : "s"} in use` : "Unused"}
-                  </span>
+                <label className="flex items-center gap-2 text-xs text-[var(--bujo-ink)]">
+                  <input
+                    type="checkbox"
+                    checked={draft.isActive}
+                    onChange={(e) => updateDraft(at.id, { isActive: e.target.checked, message: null })}
+                    className="bujo-range"
+                  />
+                  Active
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-[var(--bujo-ink)]">Default display</label>
+                    <select
+                      value={draft.defaultDisplayOption}
+                      onChange={(e) => setDefaultDisplay(at.id, e.target.value as DisplayOption)}
+                      className="bujo-input text-sm"
+                    >
+                      {displayOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-[var(--bujo-ink)]">Allowed displays</p>
+                    <div className="flex flex-wrap gap-3">
+                      {displayOptions.map((opt) => (
+                        <label
+                          key={opt}
+                          className={`flex items-center gap-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] px-3 py-2 text-xs ${
+                            opt === draft.defaultDisplayOption ? "opacity-90" : ""
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={draft.allowedDisplayOptions.includes(opt)}
+                            onChange={() => toggleAllowedDisplay(at.id, opt)}
+                            className="bujo-range"
+                            disabled={opt === draft.defaultDisplayOption}
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-semibold">{opt}</span>
+                            {opt === draft.defaultDisplayOption && (
+                              <span className="text-[10px] uppercase tracking-wide text-[var(--bujo-subtle)]">Default</span>
+                            )}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-xs font-semibold text-[var(--bujo-ink)]">Demo data (7 days)</p>
+                    <p className="text-[11px] text-[var(--bujo-subtle)]">
+                      Provide a JSON array with 7 values for preview.
+                    </p>
+                  </div>
+                  <textarea
+                    value={demoDataByTypeId[at.id] ?? ""}
+                    onChange={(e) =>
+                      setDemoDataByTypeId((prev) => ({
+                        ...prev,
+                        [at.id]: e.target.value,
+                      }))
+                    }
+                    rows={3}
+                    className="bujo-input text-xs"
+                  />
+                  {parsedDemoByTypeId[at.id]?.error && (
+                    <p className="text-xs text-[var(--bujo-subtle)]">{parsedDemoByTypeId[at.id].error}</p>
+                  )}
+                  {(() => {
+                    const parsed = parsedDemoByTypeId[at.id];
+                    if (!parsed || parsed.error || parsed.values.length === 0) return null;
+                    const previewAnswers = buildDemoAnswersFromValues(at, parsed.values, `${at.name} preview`);
+                    return (
+                      <div className="mt-2 space-y-2">
+                        <p className="text-xs font-semibold text-[var(--bujo-ink)]">Display previews</p>
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          {displayOptions.map((opt) => (
+                            <div key={`${at.id}-${opt}`} className="rounded-md border border-[var(--bujo-border)] bg-white p-2">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--bujo-subtle)]">
+                                {opt}
+                              </p>
+                              <div className="mt-2">
+                                <InsightsChart
+                                  answers={previewAnswers}
+                                  chartPalette={null}
+                                  chartStyle="gradient"
+                                  userQuestions={[]}
+                                  displayOption={opt}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={() => save(at.id)} className="bujo-btn text-sm" disabled={draft.saving}>
+                    {draft.saving ? "Saving..." : "Save display options"}
+                  </button>
+                  {draft.message && <p className="text-xs text-[var(--bujo-subtle)]">{draft.message}</p>}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Link href={`/admin/answer-types/${at.id}/edit`} className="bujo-btn text-sm">
-                  Edit
-                </Link>
-                <button
-                  onClick={() => setPendingDeleteId(at.id)}
-                  className="bujo-btn-danger text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={at.usageCount > 0}
-                  title={at.usageCount > 0 ? "This answer type is used by existing templates" : "Delete answer type"}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
-
-      {message && <p className="bujo-message mt-4 text-sm">{message}</p>}
-
-      <ConfirmDialog
-        open={!!pendingDeleteId}
-        title="Delete answer type?"
-        description={
-          pendingDelete?.usageCount
-            ? "You cannot delete an answer type that is still referenced by question templates."
-            : "This will remove the answer type. Make sure no templates depend on it."
-        }
-        confirmLabel={deleting ? "Deleting..." : "Delete"}
-        cancelLabel="Cancel"
-        confirmTone="danger"
-        onConfirm={deleteAnswerType}
-        onCancel={() => setPendingDeleteId(null)}
-      />
     </div>
   );
 }

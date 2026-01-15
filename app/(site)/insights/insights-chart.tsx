@@ -15,7 +15,8 @@ import {
   type LinearScaleOptions,
 } from "chart.js";
 import { addDays, format, parseISO, startOfWeek, subWeeks } from "date-fns";
-import { type ChartPalette, type ChartStyle } from "@/lib/types";
+import { type ChartPalette, type ChartStyle, type DisplayOption } from "@/lib/types";
+import { defaultThemeDefaults } from "@/lib/theme-constants";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, ChartLegend);
 
@@ -37,7 +38,11 @@ type AnswerRow = {
     | {
         id?: string;
         title?: string;
-        answer_types?: { type?: string | null; meta?: Record<string, unknown> | null } | null;
+        answer_types?: {
+          type?: string | null;
+          meta?: Record<string, unknown> | null;
+          default_display_option?: DisplayOption | null;
+        } | null;
       }
     | null;
 };
@@ -48,23 +53,19 @@ type QuestionSeries = {
   promptSnapshot?: string | null;
   categorySnapshot?: string | null;
   label: string;
-  type: "scale" | "number" | "boolean" | "other";
+  type: "scale" | "number" | "boolean" | "emoji" | "other";
   typeLabel: string;
   unit?: string;
   scaleRange?: { min: number; max: number };
   points: Array<{ date: string; value: number }>;
+  emojiPoints?: Array<{ date: string; value: string }>;
   palette?: ChartPalette;
+  defaultDisplayOption?: DisplayOption;
 };
 
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const defaultPalette: ChartPalette = {
-  accent: "#2f4a3d",
-  accentSoft: "#5f8b7a",
-  booleanYes: "#5ce695",
-  booleanNo: "#f98c80",
-  scaleLow: "#ffeacc",
-  scaleHigh: "#ff813d",
-};
+const defaultPalette = defaultThemeDefaults.chart_palette;
+const defaultStyle = defaultThemeDefaults.chart_style;
 
 type ScaleColors = {
   veryLow: string;
@@ -83,6 +84,10 @@ function normalizeHexColor(value?: string | null) {
   const raw = trimmed.slice(1);
   const expanded = raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw;
   return `#${expanded.toLowerCase()}`;
+}
+
+function normalizeDisplayOption(value: unknown): DisplayOption | null {
+  return value === "list" || value === "grid" || value === "count" || value === "graph" ? value : null;
 }
 
 function sanitizePalette(input?: Partial<ChartPalette> | null, fallback?: ChartPalette): ChartPalette {
@@ -138,12 +143,8 @@ function buildScaleColors(palette: ChartPalette): ScaleColors {
 type UserQuestionOverride = {
   template_id: string;
   color_palette?: ChartPalette | null;
-  answer_type_override?:
-    | {
-        type?: string | null;
-        meta?: Record<string, unknown> | null;
-      }
-    | null;
+  sort_order?: number | null;
+  display_option_override?: DisplayOption | null;
 };
 
 function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQuestionOverride>): QuestionSeries[] {
@@ -151,12 +152,14 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
     answers.reduce<Record<string, QuestionSeries>>((acc, row) => {
       const override = row.template_id ? overrides?.get(row.template_id) : undefined;
       const meta =
-        (override?.answer_type_override?.meta as Record<string, unknown> | null) ||
         ((row.question_templates?.answer_types?.meta as Record<string, unknown> | null) || null);
       const metaUnit = meta?.["unit"];
       const metaMin = meta?.["min"];
       const metaMax = meta?.["max"];
       const unit = typeof metaUnit === "string" ? metaUnit : undefined;
+      const defaultDisplay = normalizeDisplayOption(
+        row.question_templates?.answer_types?.default_display_option,
+      );
       const scaleMinValue = typeof metaMin === "number" ? metaMin : 1;
       const scaleMaxValue =
         typeof metaMax === "number" ? metaMax : typeof metaMin === "number" ? metaMin + 4 : 5;
@@ -167,13 +170,15 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
             : { min: scaleMinValue, max: scaleMinValue + 4 }
           : { min: 1, max: 5 };
       const type =
-        ((override?.answer_type_override?.type as QuestionSeries["type"]) ||
-          (row.question_templates?.answer_types?.type as QuestionSeries["type"])) ||
+        ((row.question_templates?.answer_types?.type as QuestionSeries["type"])) ||
         "other";
       const templateId = row.template_id || undefined;
       const palette = (override?.color_palette as ChartPalette | undefined) || undefined;
+      const emojiValue = type === "emoji" ? row.emoji_value : null;
       const value =
-        type === "boolean"
+        type === "emoji"
+          ? null
+          : type === "boolean"
           ? row.bool_value === null || row.bool_value === undefined
             ? null
             : row.bool_value
@@ -185,7 +190,11 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
               ? row.scale_value
               : row.scale_value ?? row.number_value ?? (row.bool_value === null || row.bool_value === undefined ? null : row.bool_value ? 1 : 0);
 
-      if (value === null || value === undefined) return acc;
+      if (type === "emoji") {
+        if (!emojiValue) return acc;
+      } else if (value === null || value === undefined) {
+        return acc;
+      }
 
       const id = row.template_id || row.prompt_snapshot || "unknown-question";
       const label = row.prompt_snapshot || row.question_templates?.title || "Untitled question";
@@ -196,6 +205,8 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
             ? "Number"
             : type === "boolean"
               ? "Yes / No"
+              : type === "emoji"
+                ? "Emoji"
               : "Value";
 
       if (!acc[id]) {
@@ -210,12 +221,19 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
           unit,
           scaleRange: type === "scale" ? scaleRange : undefined,
           points: [],
+          emojiPoints: type === "emoji" ? [] : undefined,
           palette,
+          defaultDisplayOption: defaultDisplay ?? undefined,
         };
       } else if (palette && !acc[id].palette) {
         acc[id].palette = palette;
       }
-      acc[id].points.push({ date: row.question_date, value: Number(value) });
+      if (type === "emoji" && emojiValue) {
+        acc[id].emojiPoints?.push({ date: row.question_date, value: emojiValue });
+        acc[id].points.push({ date: row.question_date, value: 1 });
+      } else {
+        acc[id].points.push({ date: row.question_date, value: Number(value) });
+      }
       return acc;
     }, {}),
   ).map((series) => ({
@@ -242,6 +260,17 @@ function buildDailyAverages(series: QuestionSeries) {
   return entries;
 }
 
+function buildEmojiDaily(series: QuestionSeries) {
+  if (!series.emojiPoints || series.emojiPoints.length === 0) return [];
+  const map = series.emojiPoints.reduce<Record<string, string>>((acc, point) => {
+    acc[point.date] = point.value;
+    return acc;
+  }, {});
+  return Object.entries(map)
+    .map(([date, value]) => ({ date, value }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 function colorForValue(
   value: number,
   type: QuestionSeries["type"],
@@ -250,6 +279,9 @@ function colorForValue(
   scaleColors: ScaleColors,
   scaleRange?: QuestionSeries["scaleRange"],
 ) {
+  if (type === "emoji") {
+    return toRgba(palette.accentSoft, 0.18, "#f3f4f6");
+  }
   if (type === "boolean") {
     return value >= 1 ? palette.booleanYes : palette.booleanNo;
   }
@@ -355,9 +387,15 @@ function QuestionCalendar({
   const calendarStart = startOfWeek(subWeeks(calendarEnd, 5), { weekStartsOn: 0 });
   const isBrush = chartStyle === "brush";
   const isSolid = chartStyle === "solid";
+  const isEditable = series.type === "boolean" || series.type === "number" || series.type === "scale";
 
   const daily = buildDailyAverages(series);
+  const emojiDaily = series.type === "emoji" ? buildEmojiDaily(series) : [];
   const valueMap = daily.reduce<Record<string, number>>((map, d) => {
+    map[d.date] = d.value;
+    return map;
+  }, {});
+  const emojiMap = emojiDaily.reduce<Record<string, string>>((map, d) => {
     map[d.date] = d.value;
     return map;
   }, {});
@@ -388,11 +426,14 @@ function QuestionCalendar({
           {days.map((day) => {
             const dayStr = format(day, "yyyy-MM-dd");
             const value = valueMap[dayStr];
-            const hasValue = value !== undefined;
+            const emojiValue = emojiMap[dayStr];
+            const hasValue = series.type === "emoji" ? emojiValue !== undefined : value !== undefined;
             const isFuture = day > today;
             const bg =
               hasValue
-                ? colorForValue(value, series.type, maxValue, palette, scaleColors, series.scaleRange)
+                ? series.type === "emoji"
+                  ? toRgba(palette.accentSoft, 0.18, "#f3f4f6")
+                  : colorForValue(value, series.type, maxValue, palette, scaleColors, series.scaleRange)
                 : "#f3f4f6";
             const brushLayer =
               !isFuture && isBrush && hasValue
@@ -407,19 +448,25 @@ function QuestionCalendar({
               ? `linear-gradient(135deg, ${bg} 0%, ${palette.scaleHigh} 100%)`
               : undefined;
             const title =
-              value !== undefined
-                ? series.type === "boolean"
-                  ? `${dayStr}: ${value >= 1 ? "Yes" : "No"}`
-                  : `${dayStr}: ${value.toFixed(1)}`
-                : isFuture
-                  ? `${dayStr}: future dates cannot be set`
-                  : dayStr;
+              series.type === "emoji"
+                ? emojiValue
+                  ? `${dayStr}: ${emojiValue}`
+                  : isFuture
+                    ? `${dayStr}: future dates cannot be set`
+                    : dayStr
+                : value !== undefined
+                  ? series.type === "boolean"
+                    ? `${dayStr}: ${value >= 1 ? "Yes" : "No"}`
+                    : `${dayStr}: ${value.toFixed(1)}`
+                  : isFuture
+                    ? `${dayStr}: future dates cannot be set`
+                    : dayStr;
 
             return (
               <div
                 key={dayStr}
                 className={`bujo-calendar-day h-14 ${
-                  isFuture ? "bujo-calendar-day--future" : "cursor-pointer"
+                  isFuture ? "bujo-calendar-day--future" : isEditable ? "cursor-pointer" : "cursor-default"
                 } ${isBrush && hasValue ? "bujo-calendar-day--brush" : ""} ${isSolid && hasValue ? "bujo-calendar-day--solid" : ""}`}
                 style={{
                   background: isFuture
@@ -434,13 +481,21 @@ function QuestionCalendar({
                 aria-label={title}
                 role="button"
                 onClick={() => {
-                  if (isFuture) return;
+                  if (isFuture || !isEditable) return;
                   onSelectDay(dayStr, value, isFuture);
                 }}
               >
                 <span className="bujo-calendar-day__date text-sm">{format(day, "d")}</span>
                 <span className="bujo-calendar-day__note">
-                  {value === undefined ? "—" : series.type === "boolean" ? (value >= 1 ? "Yes" : "No") : value.toFixed(0)}
+                  {series.type === "emoji"
+                    ? emojiValue ?? "—"
+                    : value === undefined
+                      ? "—"
+                      : series.type === "boolean"
+                        ? value >= 1
+                          ? "Yes"
+                          : "No"
+                        : value.toFixed(0)}
                 </span>
                 <span className="sr-only">{title}</span>
               </div>
@@ -691,24 +746,53 @@ export default function InsightsChart({
   chartPalette,
   chartStyle,
   userQuestions,
+  displayOption,
+  defaultPalette: fallbackPalette,
+  defaultStyle: fallbackStyle,
 }: {
   answers: AnswerRow[];
   chartPalette?: Partial<ChartPalette> | null;
   chartStyle?: ChartStyle | null;
   userQuestions?: UserQuestionOverride[] | null;
+  displayOption?: DisplayOption | null;
+  defaultPalette?: ChartPalette;
+  defaultStyle?: ChartStyle;
 }) {
   const overrideMap = useMemo(
     () => new Map((userQuestions || []).map((uq) => [uq.template_id, uq])),
     [userQuestions],
   );
   const questionSeries = useMemo(() => toQuestionSeries(answers, overrideMap), [answers, overrideMap]);
-  const [seriesData, setSeriesData] = useState<QuestionSeries[]>(questionSeries);
+  const orderedSeries = useMemo(() => {
+    if (!userQuestions || userQuestions.length === 0) return questionSeries;
+    const orderMap = new Map(
+      userQuestions.map((uq, index) => [
+        uq.template_id,
+        typeof uq.sort_order === "number" ? uq.sort_order : index,
+      ]),
+    );
+    return [...questionSeries].sort((a, b) => {
+      const aOrder = a.templateId ? orderMap.get(a.templateId) : undefined;
+      const bOrder = b.templateId ? orderMap.get(b.templateId) : undefined;
+      const aRank = typeof aOrder === "number" ? aOrder : Number.POSITIVE_INFINITY;
+      const bRank = typeof bOrder === "number" ? bOrder : Number.POSITIVE_INFINITY;
+      if (aRank !== bRank) return aRank - bRank;
+      return a.label.localeCompare(b.label);
+    });
+  }, [questionSeries, userQuestions]);
+  const [seriesData, setSeriesData] = useState<QuestionSeries[]>(orderedSeries);
   const [modalState, setModalState] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const palette = useMemo(() => sanitizePalette(chartPalette ?? null), [chartPalette]);
+  const palette = useMemo(
+    () => sanitizePalette(chartPalette ?? null, fallbackPalette ?? defaultPalette),
+    [chartPalette, fallbackPalette],
+  );
   const resolvedStyle: ChartStyle =
-    chartStyle === "brush" || chartStyle === "solid" ? chartStyle : "gradient";
+    chartStyle === "brush" || chartStyle === "solid"
+      ? chartStyle
+      : fallbackStyle ?? defaultStyle;
+  const globalDisplayOption = normalizeDisplayOption(displayOption);
   const isBrush = resolvedStyle === "brush";
   const isSolid = resolvedStyle === "solid";
 
@@ -769,8 +853,8 @@ export default function InsightsChart({
   });
 
   useEffect(() => {
-    setSeriesData(questionSeries);
-  }, [questionSeries]);
+    setSeriesData(orderedSeries);
+  }, [orderedSeries]);
 
   const handleSelectDay = (series: QuestionSeries, date: string, value: number | undefined, isFuture: boolean) => {
     setError(null);
@@ -846,91 +930,201 @@ export default function InsightsChart({
           {(() => {
             const seriesPalette = series.palette ? sanitizePalette(series.palette, palette) : palette;
             const seriesScaleColors = buildScaleColors(seriesPalette);
+            const daily = buildDailyAverages(series);
+            const emojiDaily = series.type === "emoji" ? buildEmojiDaily(series) : [];
+            const recentEmoji = series.type === "emoji" ? emojiDaily.slice(-7) : [];
+            const recentNumeric = series.type === "emoji" ? [] : daily.slice(-7);
+            const hasRecent = series.type === "emoji" ? recentEmoji.length > 0 : recentNumeric.length > 0;
+            const formatValue = (value: number) => {
+              if (series.type === "boolean") return value >= 1 ? "Yes" : "No";
+              return Number.isFinite(value) ? value.toFixed(series.type === "scale" ? 0 : 1) : "—";
+            };
+            const countValue =
+              series.type === "emoji"
+                ? emojiDaily.length
+                : series.type === "boolean"
+                  ? daily.reduce((sum, item) => sum + (item.value >= 1 ? 1 : 0), 0)
+                  : daily.length;
+            const latestEmoji = emojiDaily.length > 0 ? emojiDaily[emojiDaily.length - 1]?.value : null;
             return (
               <>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">{series.label}</h2>
-              <p className="text-xs text-gray-600">Daily {series.typeLabel}</p>
-            </div>
-          </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">{series.label}</h2>
+                    <p className="text-xs text-gray-600">Daily {series.typeLabel}</p>
+                  </div>
+                </div>
 
-          <QuestionCalendar
-            series={series}
-            onSelectDay={(date, value, isFuture) => handleSelectDay(series, date, value, isFuture)}
-            palette={seriesPalette}
-            scaleColors={seriesScaleColors}
-            chartStyle={resolvedStyle}
-          />
+                {(() => {
+                  const overrideDisplay = series.templateId
+                    ? normalizeDisplayOption(overrideMap.get(series.templateId)?.display_option_override)
+                    : null;
+                  const seriesDisplayOption =
+                    globalDisplayOption ?? overrideDisplay ?? series.defaultDisplayOption ?? "graph";
+                  return (
+                <>
+                {seriesDisplayOption === "graph" && (
+                  <>
+                    {series.type === "emoji" ? (
+                      <p className="mt-3 text-sm text-gray-600">
+                        Graph view isn&apos;t available for emoji answers. Use list, grid, or count instead.
+                      </p>
+                    ) : series.type === "number" ? (
+                      <NumberBarChart
+                        series={series}
+                        palette={seriesPalette}
+                        scaleColors={seriesScaleColors}
+                        chartStyle={resolvedStyle}
+                      />
+                    ) : (
+                      <div
+                        className={`mt-4 bujo-chart ${isBrush ? "bujo-chart--brush" : ""} ${isSolid ? "bujo-chart--solid" : ""}`}
+                      >
+                        <Line
+                          data={(() => {
+                            return {
+                              labels: daily.map((d) => d.date.slice(5)),
+                              datasets: [
+                                {
+                                  label: `${series.typeLabel} trend`,
+                                  data: daily.map((d) => d.value),
+                                  borderColor: toRgba(seriesPalette.accent, 0.9, "rgba(47, 74, 61, 0.85)"),
+                                  backgroundColor: isBrush
+                                    ? toRgba(seriesPalette.accent, 0.12, "rgba(47, 74, 61, 0.12)")
+                                    : isSolid
+                                      ? toRgba(seriesPalette.accentSoft, 0.12, "rgba(95, 139, 122, 0.12)")
+                                      : toRgba(seriesPalette.accentSoft, 0.18, "rgba(95, 139, 122, 0.18)"),
+                                },
+                              ],
+                            };
+                          })()}
+                          options={(() => {
+                            const baseLineOptions = buildLineOptions(seriesPalette);
+                            const yMinBase =
+                              series.type === "scale"
+                                ? series.scaleRange?.min ?? 1
+                                : series.type === "boolean"
+                                  ? 0
+                                  : undefined;
+                            const yMaxBase =
+                              series.type === "scale"
+                                ? series.scaleRange?.max ?? 5
+                                : series.type === "boolean"
+                                  ? 1
+                                  : undefined;
+                            const verticalPadding = series.type === "scale" ? 0.35 : 0;
+                            const yMin =
+                              series.type === "boolean"
+                                ? -0.1
+                                : yMinBase !== undefined
+                                  ? yMinBase - verticalPadding
+                                  : undefined;
+                            const yMax =
+                              series.type === "boolean"
+                                ? 1.1
+                                : yMaxBase !== undefined
+                                  ? yMaxBase + verticalPadding
+                                  : undefined;
+                            const baseStepSize = (baseLineOptions.scales?.y as LinearScaleOptions | undefined)?.ticks?.stepSize;
+                            const stepSize =
+                              (series.type === "scale" || series.type === "boolean") && yMinBase !== undefined && yMaxBase !== undefined
+                                ? Math.max(1, Math.round((yMaxBase - yMinBase) / 4))
+                                : baseStepSize;
+                            const tickCallback =
+                                  series.type === "scale"
+                                ? (value: string | number) => {
+                                    const numeric = typeof value === "string" ? Number(value) : value;
+                                    return Number.isInteger(numeric) ? numeric.toString() : "";
+                                  }
+                                : series.type === "boolean"
+                                  ? (value: string | number) => {
+                                      const numeric = typeof value === "string" ? Number(value) : value;
+                                          if (numeric === 1) return "Yes";
+                                          if (numeric === 0) return "No";
+                                      return "";
+                                    }
+                                : baseLineOptions.scales?.y?.ticks?.callback;
 
-          {series.type === "number" ? (
-            <NumberBarChart
-              series={series}
-              palette={seriesPalette}
-              scaleColors={seriesScaleColors}
-              chartStyle={resolvedStyle}
-            />
-          ) : series.type === "boolean" ? null : (
-            <div className={`mt-4 bujo-chart ${isBrush ? "bujo-chart--brush" : ""} ${isSolid ? "bujo-chart--solid" : ""}`}>
-              <Line
-                data={(() => {
-                  const daily = buildDailyAverages(series);
-                  return {
-                    labels: daily.map((d) => d.date.slice(5)),
-                    datasets: [
-                      {
-                        label: `${series.typeLabel} trend`,
-                        data: daily.map((d) => d.value),
-                        borderColor: toRgba(seriesPalette.accent, 0.9, "rgba(47, 74, 61, 0.85)"),
-                        backgroundColor: isBrush
-                          ? toRgba(seriesPalette.accent, 0.12, "rgba(47, 74, 61, 0.12)")
-                          : isSolid
-                            ? toRgba(seriesPalette.accentSoft, 0.12, "rgba(95, 139, 122, 0.12)")
-                            : toRgba(seriesPalette.accentSoft, 0.18, "rgba(95, 139, 122, 0.18)"),
-                      },
-                    ],
-                  };
+                            return {
+                              ...baseLineOptions,
+                              plugins: { ...(baseLineOptions.plugins || {}) },
+                              elements: { ...(baseLineOptions.elements || {}) },
+                              scales: {
+                                ...baseLineOptions.scales,
+                                y: {
+                                  ...baseLineOptions.scales?.y,
+                                  min: yMin,
+                                  max: yMax,
+                                  suggestedMin: yMinBase,
+                                  suggestedMax: yMaxBase,
+                                  ticks: { ...(baseLineOptions.scales?.y?.ticks || {}), stepSize, callback: tickCallback },
+                                },
+                              },
+                            };
+                          })()}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {seriesDisplayOption === "grid" && (
+                  <QuestionCalendar
+                    series={series}
+                    onSelectDay={(date, value, isFuture) => handleSelectDay(series, date, value, isFuture)}
+                    palette={seriesPalette}
+                    scaleColors={seriesScaleColors}
+                    chartStyle={resolvedStyle}
+                  />
+                )}
+
+                {seriesDisplayOption === "list" && (
+                  <div className="mt-3 space-y-2">
+                    {!hasRecent ? (
+                      <p className="text-sm text-gray-700">No data yet.</p>
+                    ) : (
+                      <ul className="space-y-1 text-sm text-gray-800">
+                        {series.type === "emoji"
+                          ? recentEmoji.map((item) => (
+                              <li key={`${series.id}-${item.date}`} className="flex items-center justify-between">
+                                <span className="text-xs text-gray-600">{format(parseISO(item.date), "MMM d")}</span>
+                                <span className="text-lg">{item.value}</span>
+                              </li>
+                            ))
+                          : recentNumeric.map((item) => (
+                              <li key={`${series.id}-${item.date}`} className="flex items-center justify-between">
+                                <span className="text-xs text-gray-600">{format(parseISO(item.date), "MMM d")}</span>
+                                <span className="font-semibold">{formatValue(item.value)}</span>
+                              </li>
+                            ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {seriesDisplayOption === "count" && (
+                  <div className="mt-3 flex items-center justify-center rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] py-6">
+                    {series.type === "emoji" ? (
+                      <div className="text-center">
+                        <p className="text-4xl font-semibold text-[var(--bujo-ink)]">{latestEmoji ?? "—"}</p>
+                        <p className="text-xs text-[var(--bujo-subtle)]">Latest entry</p>
+                        <p className="mt-1 text-[11px] text-[var(--bujo-subtle)]">
+                          {countValue} {countValue === 1 ? "entry" : "entries"}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-center">
+                        <p className="text-3xl font-semibold text-[var(--bujo-ink)]">{countValue}</p>
+                        <p className="text-xs text-[var(--bujo-subtle)]">
+                          {series.type === "boolean" ? "Yes days" : "Entries"}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                </>
+                  );
                 })()}
-                options={(() => {
-                  const baseLineOptions = buildLineOptions(seriesPalette);
-                  const yMinBase = series.type === "scale" ? series.scaleRange?.min ?? 1 : undefined;
-                  const yMaxBase = series.type === "scale" ? series.scaleRange?.max ?? 5 : undefined;
-                  const verticalPadding = series.type === "scale" ? 0.35 : 0;
-                  const yMin = yMinBase !== undefined ? Math.max(0, yMinBase - verticalPadding) : undefined;
-                  const yMax = yMaxBase !== undefined ? yMaxBase + verticalPadding : undefined;
-                  const baseStepSize = (baseLineOptions.scales?.y as LinearScaleOptions | undefined)?.ticks?.stepSize;
-                  const stepSize =
-                    series.type === "scale" && yMinBase !== undefined && yMaxBase !== undefined
-                      ? Math.max(1, Math.round((yMaxBase - yMinBase) / 4))
-                      : baseStepSize;
-                  const tickCallback =
-                    series.type === "scale"
-                      ? (value: string | number) => {
-                          const numeric = typeof value === "string" ? Number(value) : value;
-                          return Number.isInteger(numeric) ? numeric.toString() : "";
-                        }
-                      : baseLineOptions.scales?.y?.ticks?.callback;
-
-                  return {
-                    ...baseLineOptions,
-                    plugins: { ...(baseLineOptions.plugins || {}) },
-                    elements: { ...(baseLineOptions.elements || {}) },
-                    scales: {
-                      ...baseLineOptions.scales,
-                      y: {
-                        ...baseLineOptions.scales?.y,
-                        min: yMin,
-                        max: yMax,
-                        suggestedMin: yMinBase,
-                        suggestedMax: yMaxBase,
-                        ticks: { ...(baseLineOptions.scales?.y?.ticks || {}), stepSize, callback: tickCallback },
-                      },
-                    },
-                  };
-                })()}
-              />
-            </div>
-          )}
           </>
         );
           })()}

@@ -1,3 +1,4 @@
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import AdminForms from "./questions-client";
@@ -32,20 +33,24 @@ export default async function AdminQuestionsPage() {
     );
   }
 
-  const { data: categories } = await supabase
-    .from("categories")
-    .select("*")
-    .order("name");
+  const adminClient = createAdminClient();
+  const [categoriesResult, answerTypesResult, templatesResult] = await Promise.all([
+    adminClient.from("categories").select("*").order("name"),
+    adminClient.from("answer_types").select("*").order("name"),
+    adminClient.from("question_templates").select("*, categories(name), answer_types(*)").order("title"),
+  ]);
 
-  const { data: answerTypes } = await supabase
-    .from("answer_types")
-    .select("*")
-    .order("name");
+  if (categoriesResult.error || answerTypesResult.error || templatesResult.error) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+        Failed to load question templates. Please refresh and try again.
+      </div>
+    );
+  }
 
-  const { data: templates } = await supabase
-    .from("question_templates")
-    .select("*, categories(name), answer_types(*)")
-    .order("title");
+  const categories = categoriesResult.data;
+  const answerTypes = answerTypesResult.data;
+  const templates = templatesResult.data;
 
   return (
     <div className="space-y-4">

@@ -105,11 +105,6 @@ export default function AdminForms({ categories, answerTypes, templates }: Props
                       Answer Type: {t.answer_types.name} ({t.answer_types.type})
                     </p>
                   )}
-                  {t.default_display_option && (
-                    <p className="text-xs text-[var(--bujo-subtle)]">
-                      Default Display: {t.default_display_option}
-                    </p>
-                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <span className={`bujo-chip text-xs ${t.is_active ? "" : "opacity-50"}`}>

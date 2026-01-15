@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { DisplayOption } from "@/lib/types";
 
 async function requireUser() {
   const supabase = await createServerSupabaseClient();
@@ -10,16 +9,17 @@ async function requireUser() {
   return { supabase, user };
 }
 
-async function requireAdmin(
+async function getProfileAccess(
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
   userId: string,
 ) {
   const { data } = await supabase
     .from("profiles")
-    .select("is_admin")
+    .select("is_admin, account_tier")
     .eq("user_id", userId)
     .single();
-  return !!data?.is_admin;
+  const accountTier = typeof data?.account_tier === "number" ? data.account_tier : 0;
+  return { isAdmin: !!data?.is_admin, accountTier };
 }
 
 export async function GET(request: Request) {
@@ -45,10 +45,26 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const isAdmin = await requireAdmin(supabase, user.id);
-  if (!isAdmin) {
+  const { isAdmin, accountTier } = await getProfileAccess(supabase, user.id);
+  if (!isAdmin && accountTier < 3) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  if (!isAdmin && accountTier === 3) {
+    const { count, error: countError } = await supabase
+      .from("question_templates")
+      .select("id", { count: "exact", head: true })
+      .eq("created_by", user.id);
+    if (countError) {
+      return NextResponse.json({ error: countError.message }, { status: 400 });
+    }
+    if ((count ?? 0) >= 5) {
+      return NextResponse.json(
+        { error: "Upgrade to create more personal questions." },
+        { status: 403 },
+      );
+    }
+  }
+
 
   const body = await request.json();
   const {
@@ -57,10 +73,6 @@ export async function POST(request: Request) {
     meta,
     is_active = true,
     answer_type_id,
-    allowed_answer_type_ids,
-    default_display_option,
-    allowed_display_options,
-    default_colors,
   } = body;
   if (!answer_type_id) {
     return NextResponse.json({ error: "answer_type_id is required" }, { status: 400 });
@@ -69,7 +81,7 @@ export async function POST(request: Request) {
   // Validate that the answer_type_id exists
   const { data: answerType, error: answerTypeError } = await supabase
     .from("answer_types")
-    .select("id")
+    .select("id, is_active")
     .eq("id", answer_type_id)
     .maybeSingle();
 
@@ -80,69 +92,16 @@ export async function POST(request: Request) {
   if (!answerType) {
     return NextResponse.json({ error: "Invalid answer_type_id: answer type does not exist" }, { status: 400 });
   }
-
-  const normalizedAllowedTypes =
-    Array.isArray(allowed_answer_type_ids) && allowed_answer_type_ids.length > 0
-      ? Array.from(new Set(allowed_answer_type_ids.filter((v) => typeof v === "string")))
-      : [];
-
-  // Validate that all allowed answer type ids exist
-  if (normalizedAllowedTypes.length > 0) {
-    const { data: existingTypes, error: typesError } = await supabase
-      .from("answer_types")
-      .select("id")
-      .in("id", normalizedAllowedTypes);
-
-    if (typesError) {
-      return NextResponse.json({ error: typesError.message }, { status: 400 });
-    }
-
-    if ((existingTypes?.length ?? 0) !== normalizedAllowedTypes.length) {
-      return NextResponse.json({ error: "One or more allowed_answer_type_ids do not exist" }, { status: 400 });
-    }
+  if (answerType.is_active === false) {
+    return NextResponse.json({ error: "Answer type is inactive." }, { status: 400 });
   }
 
-  const allowedDisplayOptions: DisplayOption[] =
-    Array.isArray(allowed_display_options) && allowed_display_options.length > 0
-      ? (Array.from(
-          new Set(
-            allowed_display_options.filter((v: unknown): v is DisplayOption =>
-              ["graph", "list", "grid", "count"].includes(String(v)),
-            ),
-          ),
-        ) as DisplayOption[])
-      : [];
-
-  const defaultDisplay: DisplayOption = (() => {
-    const fallback = "graph" as DisplayOption;
-    if (typeof default_display_option === "string" && ["graph", "list", "grid", "count"].includes(default_display_option)) {
-      return default_display_option as DisplayOption;
-    }
-    return fallback;
-  })();
-
-  if (normalizedAllowedTypes.length > 0 && !normalizedAllowedTypes.includes(answer_type_id)) {
-    normalizedAllowedTypes.push(answer_type_id);
-  }
-
-  const displayOptionsToPersist =
-    allowedDisplayOptions.length > 0 ? allowedDisplayOptions : ([defaultDisplay] as DisplayOption[]);
-
-  if (displayOptionsToPersist.length > 0 && !displayOptionsToPersist.includes(defaultDisplay)) {
-    displayOptionsToPersist.push(defaultDisplay);
-  }
-
-  const normalizedDefaultColors = default_colors && typeof default_colors === "object" && !Array.isArray(default_colors) ? default_colors : {};
   const { error } = await supabase.from("question_templates").insert({
     title,
     category_id,
     meta,
     is_active,
     answer_type_id,
-    allowed_answer_type_ids: normalizedAllowedTypes,
-    default_display_option: defaultDisplay,
-    allowed_display_options: displayOptionsToPersist,
-    default_colors: normalizedDefaultColors,
     created_by: user.id,
   });
   if (error) {
@@ -156,8 +115,8 @@ export async function PUT(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const isAdmin = await requireAdmin(supabase, user.id);
-  if (!isAdmin) {
+  const { isAdmin, accountTier } = await getProfileAccess(supabase, user.id);
+  if (!isAdmin && accountTier < 3) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -169,10 +128,6 @@ export async function PUT(request: Request) {
     meta,
     is_active,
     answer_type_id,
-    allowed_answer_type_ids,
-    default_display_option,
-    allowed_display_options,
-    default_colors,
   } = body;
   if (!id) {
     return NextResponse.json({ error: "Template id is required" }, { status: 400 });
@@ -180,7 +135,7 @@ export async function PUT(request: Request) {
 
   const { data: existingTemplate, error: fetchError } = await supabase
     .from("question_templates")
-    .select("allowed_display_options, allowed_answer_type_ids, answer_type_id, default_display_option")
+    .select("answer_type_id, created_by")
     .eq("id", id)
     .maybeSingle();
 
@@ -189,6 +144,9 @@ export async function PUT(request: Request) {
   }
   if (!existingTemplate) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
+  }
+  if (!isAdmin && existingTemplate.created_by !== user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const updates: Record<string, unknown> = {};
@@ -200,7 +158,7 @@ export async function PUT(request: Request) {
     // Validate that the answer_type_id exists
     const { data: answerType, error: answerTypeError } = await supabase
       .from("answer_types")
-      .select("id")
+      .select("id, is_active")
       .eq("id", answer_type_id)
       .maybeSingle();
 
@@ -211,80 +169,11 @@ export async function PUT(request: Request) {
     if (!answerType) {
       return NextResponse.json({ error: "Invalid answer_type_id: answer type does not exist" }, { status: 400 });
     }
+    if (answerType.is_active === false && answer_type_id !== existingTemplate.answer_type_id) {
+      return NextResponse.json({ error: "Answer type is inactive." }, { status: 400 });
+    }
 
     updates.answer_type_id = answer_type_id;
-  }
-
-  if (allowed_answer_type_ids !== undefined) {
-    const normalized =
-      Array.isArray(allowed_answer_type_ids) && allowed_answer_type_ids.length > 0
-        ? Array.from(new Set(allowed_answer_type_ids.filter((v) => typeof v === "string")))
-        : [];
-    const targetAnswerType = (answer_type_id as string | undefined) ?? (existingTemplate.answer_type_id as string | undefined);
-    if (targetAnswerType && normalized.length > 0 && !normalized.includes(targetAnswerType)) {
-      normalized.push(targetAnswerType);
-    }
-
-    // Validate that all allowed answer type ids exist
-    if (normalized.length > 0) {
-      const { data: existingTypes, error: typesError } = await supabase
-        .from("answer_types")
-        .select("id")
-        .in("id", normalized);
-
-      if (typesError) {
-        return NextResponse.json({ error: typesError.message }, { status: 400 });
-      }
-
-      if ((existingTypes?.length ?? 0) !== normalized.length) {
-        return NextResponse.json({ error: "One or more allowed_answer_type_ids do not exist" }, { status: 400 });
-      }
-    }
-
-    updates.allowed_answer_type_ids = normalized;
-  }
-
-  if (default_display_option !== undefined) {
-    if (typeof default_display_option !== "string" || !["graph", "list", "grid", "count"].includes(default_display_option)) {
-      return NextResponse.json({ error: "default_display_option must be one of graph, list, grid, count" }, { status: 400 });
-    }
-    updates.default_display_option = default_display_option;
-  }
-
-  if (allowed_display_options !== undefined) {
-    const normalized =
-      Array.isArray(allowed_display_options) && allowed_display_options.length > 0
-        ? Array.from(
-            new Set(
-              allowed_display_options.filter((v: unknown): v is DisplayOption =>
-                ["graph", "list", "grid", "count"].includes(String(v)),
-              ),
-            ),
-          )
-        : [];
-    const targetDefault =
-      (updates.default_display_option as DisplayOption | undefined) ||
-      (default_display_option as DisplayOption | undefined) ||
-      (existingTemplate.default_display_option as DisplayOption | undefined);
-    if (targetDefault && !normalized.includes(targetDefault)) {
-      normalized.push(targetDefault);
-    }
-    updates.allowed_display_options = normalized;
-  } else if (updates.default_display_option) {
-    // Ensure the new default is present in the existing allowed set
-    const currentAllowed = Array.isArray(existingTemplate.allowed_display_options)
-      ? [...existingTemplate.allowed_display_options]
-      : [];
-    if (!currentAllowed.includes(updates.default_display_option as DisplayOption)) {
-      updates.allowed_display_options = [...currentAllowed, updates.default_display_option as DisplayOption];
-    }
-  }
-
-  if (default_colors !== undefined) {
-    if (default_colors !== null && (typeof default_colors !== "object" || Array.isArray(default_colors))) {
-      return NextResponse.json({ error: "default_colors must be an object" }, { status: 400 });
-    }
-    updates.default_colors = default_colors ?? {};
   }
 
   if (Object.keys(updates).length === 0) {
@@ -303,8 +192,8 @@ export async function DELETE(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const isAdmin = await requireAdmin(supabase, user.id);
-  if (!isAdmin) {
+  const { isAdmin, accountTier } = await getProfileAccess(supabase, user.id);
+  if (!isAdmin && accountTier < 3) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -312,6 +201,20 @@ export async function DELETE(request: Request) {
   const { id } = body;
   if (!id) {
     return NextResponse.json({ error: "Template id is required" }, { status: 400 });
+  }
+
+  if (!isAdmin) {
+    const { data: existingTemplate, error: fetchError } = await supabase
+      .from("question_templates")
+      .select("created_by")
+      .eq("id", id)
+      .maybeSingle();
+    if (fetchError) {
+      return NextResponse.json({ error: fetchError.message }, { status: 400 });
+    }
+    if (!existingTemplate || existingTemplate.created_by !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
   }
 
   const { error } = await supabase.from("question_templates").delete().eq("id", id);

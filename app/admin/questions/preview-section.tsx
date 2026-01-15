@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { format, subDays } from "date-fns";
-import type { AnswerType, DisplayOption, ChartPalette } from "@/lib/types";
+import type { AnswerType, DisplayOption } from "@/lib/types";
 import InsightsChart from "@/app/(site)/insights/insights-chart";
 
 type AnswerRow = {
@@ -31,31 +31,127 @@ type Props = {
   answerTypes: AnswerType[];
   displayOptions: DisplayOption[];
   defaultDisplayOption: DisplayOption;
-  defaultColors: string;
   answerTypeId: string;
 };
 
-function generateDemoAnswers(
-  answerType: AnswerType,
-  days: number = 30,
-  templateId: string = "preview-template",
-  questionTitle: string = "Preview Question",
-): AnswerRow[] {
-  const today = new Date();
-  const answers: AnswerRow[] = [];
+type DemoValue = boolean | number | string | string[] | null;
 
-  for (let i = 0; i < days; i++) {
-    const date = subDays(today, days - 1 - i);
+const generateDemoValues = (answerType: AnswerType, days: number = 7): DemoValue[] => {
+  const random = () => Math.random();
+  const meta = answerType.meta || {};
+  const minNumber = typeof meta.min === "number" ? meta.min : 0;
+  const maxNumber = typeof meta.max === "number" ? meta.max : 100;
+  const minScale = typeof meta.min === "number" ? meta.min : 1;
+  const maxScale = typeof meta.max === "number" ? meta.max : 5;
+  const emojiItems = answerType.items || ["😀", "🙂", "😐", "😞", "😡"];
+  const textSamples = ["Good", "Great", "Okay", "Fine", "Excellent", "Rough", "Calm"];
+  const listItems = answerType.items || [];
+
+  return Array.from({ length: days }).map(() => {
+    switch (answerType.type) {
+      case "boolean":
+        return random() > 0.4;
+      case "number":
+        return Math.round(minNumber + random() * (maxNumber - minNumber));
+      case "scale":
+        return Math.round(minScale + random() * (maxScale - minScale));
+      case "emoji":
+        return emojiItems[Math.floor(random() * emojiItems.length)];
+      case "text":
+        return textSamples[Math.floor(random() * textSamples.length)];
+      case "yes_no_list": {
+        if (listItems.length === 0) return [];
+        return listItems.filter((item) => random() > 0.5).slice(0, listItems.length);
+      }
+      default:
+        return null;
+    }
+  });
+};
+
+const parseDemoValues = (raw: string): { values: DemoValue[]; error: string | null } => {
+  if (!raw.trim()) {
+    return { values: [], error: "Provide a JSON array with 7 values." };
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return { values: [], error: "Demo data must be a JSON array." };
+    }
+    if (parsed.length !== 7) {
+      return { values: [], error: "Provide exactly 7 values." };
+    }
+    return { values: parsed as DemoValue[], error: null };
+  } catch {
+    return { values: [], error: "Demo data must be valid JSON." };
+  }
+};
+
+const buildDemoAnswersFromValues = (
+  answerType: AnswerType,
+  values: DemoValue[],
+  templateId: string,
+  questionTitle: string,
+): AnswerRow[] => {
+  const today = new Date();
+  const meta = answerType.meta || {};
+  const minNumber = typeof meta.min === "number" ? meta.min : 0;
+  const maxNumber = typeof meta.max === "number" ? meta.max : 100;
+  const minScale = typeof meta.min === "number" ? meta.min : 1;
+  const maxScale = typeof meta.max === "number" ? meta.max : 5;
+
+  const toNumber = (value: DemoValue, fallback: number) => {
+    if (typeof value === "number" && !Number.isNaN(value)) return value;
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      return Number.isNaN(parsed) ? fallback : parsed;
+    }
+    return fallback;
+  };
+
+  const toBoolean = (value: DemoValue) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value > 0;
+    if (typeof value === "string") return value.toLowerCase() === "true";
+    return false;
+  };
+
+  const toStringValue = (value: DemoValue, fallback: string) => {
+    if (typeof value === "string") return value;
+    if (value === null || typeof value === "undefined") return fallback;
+    return String(value);
+  };
+
+  const toStringArray = (value: DemoValue): string[] => {
+    if (Array.isArray(value)) {
+      return value.filter((entry) => typeof entry === "string");
+    }
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((entry) => typeof entry === "string");
+        }
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
+  return values.map((value, index) => {
+    const date = subDays(today, values.length - 1 - index);
     const dateStr = format(date, "yyyy-MM-dd");
+    const timestamp = `${dateStr}T00:00:00.000Z`;
     const baseAnswer: Omit<AnswerRow, "bool_value" | "number_value" | "scale_value" | "emoji_value" | "text_value"> = {
-      id: `preview-${i}`,
+      id: `preview-${answerType.id}-${index}`,
       user_id: "preview-user",
       template_id: templateId,
       question_date: dateStr,
       prompt_snapshot: null,
       category_snapshot: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: timestamp,
+      updated_at: timestamp,
       question_templates: {
         id: templateId,
         title: questionTitle,
@@ -67,176 +163,120 @@ function generateDemoAnswers(
     };
 
     switch (answerType.type) {
-      case "boolean": {
-        // Generate roughly 60% yes, 40% no with some randomness
-        const value = Math.random() > 0.4;
-        answers.push({
+      case "boolean":
+        return {
           ...baseAnswer,
-          bool_value: value,
+          bool_value: toBoolean(value),
           number_value: null,
           scale_value: null,
           emoji_value: null,
           text_value: null,
-        });
-        break;
-      }
-      case "number": {
-        // Generate numbers between 0 and 100 with some variation
-        const meta = answerType.meta || {};
-        const min = (typeof meta.min === "number" ? meta.min : 0) as number;
-        const max = (typeof meta.max === "number" ? meta.max : 100) as number;
-        const value = Math.floor(Math.random() * (max - min + 1)) + min;
-        answers.push({
+        };
+      case "number":
+        return {
           ...baseAnswer,
           bool_value: null,
-          number_value: value,
+          number_value: Math.min(maxNumber, Math.max(minNumber, toNumber(value, minNumber))),
           scale_value: null,
           emoji_value: null,
           text_value: null,
-        });
-        break;
-      }
-      case "scale": {
-        // Generate scale values based on meta min/max
-        const meta = answerType.meta || {};
-        const min = (typeof meta.min === "number" ? meta.min : 1) as number;
-        const max = (typeof meta.max === "number" ? meta.max : 5) as number;
-        const value = Math.floor(Math.random() * (max - min + 1)) + min;
-        answers.push({
+        };
+      case "scale":
+        return {
           ...baseAnswer,
           bool_value: null,
           number_value: null,
-          scale_value: value,
+          scale_value: Math.min(maxScale, Math.max(minScale, toNumber(value, minScale))),
           emoji_value: null,
           text_value: null,
-        });
-        break;
-      }
-      case "emoji": {
-        // Pick a random emoji from items
-        const items = answerType.items || ["😀", "🙂", "😐", "😞", "😡"];
-        const value = items[Math.floor(Math.random() * items.length)];
-        answers.push({
+        };
+      case "emoji":
+        return {
           ...baseAnswer,
           bool_value: null,
           number_value: null,
           scale_value: null,
-          emoji_value: value,
+          emoji_value: toStringValue(value, "🙂"),
           text_value: null,
-        });
-        break;
-      }
-      case "text": {
-        // Generate simple text values
-        const samples = ["Good", "Great", "Okay", "Fine", "Excellent"];
-        const value = samples[Math.floor(Math.random() * samples.length)];
-        answers.push({
+        };
+      case "text":
+        return {
           ...baseAnswer,
           bool_value: null,
           number_value: null,
           scale_value: null,
           emoji_value: null,
-          text_value: value,
-        });
-        break;
-      }
+          text_value: toStringValue(value, "Okay"),
+        };
       case "yes_no_list": {
-        // Generate yes/no list as JSON array
-        const items = answerType.items || [];
-        const selectedItems = items.filter(() => Math.random() > 0.5);
-        answers.push({
+        const selectedItems = toStringArray(value);
+        return {
           ...baseAnswer,
-          bool_value: selectedItems.length > 0 ? true : false,
+          bool_value: selectedItems.length > 0,
           number_value: null,
           scale_value: null,
           emoji_value: null,
           text_value: selectedItems.length > 0 ? JSON.stringify(selectedItems) : null,
-        });
-        break;
+        };
       }
       default:
-        break;
+        return {
+          ...baseAnswer,
+          bool_value: null,
+          number_value: null,
+          scale_value: null,
+          emoji_value: null,
+          text_value: null,
+        };
     }
-  }
-
-  return answers;
-}
+  });
+};
 
 export default function PreviewSection({
   questionTitle,
   answerTypes,
   displayOptions,
   defaultDisplayOption,
-  defaultColors,
   answerTypeId,
 }: Props) {
-  const [previewDays, setPreviewDays] = useState(30);
-  const [previewNumberMin, setPreviewNumberMin] = useState(0);
-  const [previewNumberMax, setPreviewNumberMax] = useState(100);
-  const [previewScaleMin, setPreviewScaleMin] = useState(1);
-  const [previewScaleMax, setPreviewScaleMax] = useState(5);
-  const [previewBooleanRatio, setPreviewBooleanRatio] = useState(60);
-
-  const parsedColors = useMemo(() => {
-    try {
-      const parsed = JSON.parse(defaultColors || "{}");
-      return typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-    } catch {
-      return {};
-    }
-  }, [defaultColors]);
+  const [demoDataByTypeId, setDemoDataByTypeId] = useState<Record<string, string>>(() => {
+    const next: Record<string, string> = {};
+    answerTypes.forEach((at) => {
+      next[at.id] = JSON.stringify(generateDemoValues(at, 7));
+    });
+    return next;
+  });
 
   const primaryAnswerType = useMemo(() => {
     return answerTypes.find((at) => at.id === answerTypeId);
   }, [answerTypes, answerTypeId]);
 
+  useEffect(() => {
+    setDemoDataByTypeId((prev) => {
+      const next = { ...prev };
+      answerTypes.forEach((at) => {
+        if (!next[at.id]) {
+          next[at.id] = JSON.stringify(generateDemoValues(at, 7));
+        }
+      });
+      return next;
+    });
+  }, [answerTypes]);
+
+  const parsedDemoByTypeId = useMemo(() => {
+    const next: Record<string, { values: DemoValue[]; error: string | null }> = {};
+    answerTypes.forEach((at) => {
+      next[at.id] = parseDemoValues(demoDataByTypeId[at.id] ?? "");
+    });
+    return next;
+  }, [answerTypes, demoDataByTypeId]);
+
   const demoAnswers = useMemo(() => {
     if (!primaryAnswerType || answerTypes.length === 0) return [];
-    return generateDemoAnswers(primaryAnswerType, previewDays, "preview-template", questionTitle);
-  }, [primaryAnswerType, answerTypes.length, previewDays, questionTitle]);
-
-  const demoAnswersWithMeta = useMemo(() => {
-    if (!primaryAnswerType) return [];
-    return demoAnswers.map((answer) => {
-      const answerType = primaryAnswerType;
-      if (!answerType) return answer;
-
-      // Override meta for number/scale types based on preview settings
-      if (answerType.type === "number" && answer.question_templates) {
-        return {
-          ...answer,
-          question_templates: {
-            ...answer.question_templates,
-            answer_types: {
-              ...answer.question_templates.answer_types,
-              meta: {
-                ...answer.question_templates.answer_types?.meta,
-                min: previewNumberMin,
-                max: previewNumberMax,
-              },
-            },
-          },
-        };
-      }
-      if (answerType.type === "scale" && answer.question_templates) {
-        return {
-          ...answer,
-          question_templates: {
-            ...answer.question_templates,
-            answer_types: {
-              ...answer.question_templates.answer_types,
-              meta: {
-                ...answer.question_templates.answer_types?.meta,
-                min: previewScaleMin,
-                max: previewScaleMax,
-              },
-            },
-          },
-        };
-      }
-      return answer;
-    });
-  }, [demoAnswers, primaryAnswerType, previewNumberMin, previewNumberMax, previewScaleMin, previewScaleMax]);
+    const parsed = parsedDemoByTypeId[primaryAnswerType.id];
+    if (!parsed || parsed.error) return [];
+    return buildDemoAnswersFromValues(primaryAnswerType, parsed.values, "preview-template", questionTitle);
+  }, [primaryAnswerType, answerTypes.length, parsedDemoByTypeId, questionTitle]);
 
   if (!primaryAnswerType || answerTypes.length === 0) {
     return null;
@@ -246,74 +286,47 @@ export default function PreviewSection({
     <div className="bujo-card bujo-torn">
       <h2 className="text-lg font-semibold text-[var(--bujo-ink)]">Preview</h2>
       <p className="mt-1 text-sm text-[var(--bujo-subtle)]">
-        See how this question will look with different answer types and display options.
+        See how this question will look with the selected answer type and its display defaults.
       </p>
 
       <div className="mt-4 space-y-4 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="text-xs font-semibold text-[var(--bujo-ink)]">Preview days</label>
-            <input
-              type="number"
-              min="7"
-              max="90"
-              value={previewDays}
-              onChange={(e) => setPreviewDays(Math.max(7, Math.min(90, Number(e.target.value))))}
-              className="bujo-input text-sm"
-            />
-          </div>
-          {primaryAnswerType?.type === "number" && (
-            <>
-              <div>
-                <label className="text-xs font-semibold text-[var(--bujo-ink)]">Number min</label>
-                <input
-                  type="number"
-                  value={previewNumberMin}
-                  onChange={(e) => setPreviewNumberMin(Number(e.target.value))}
-                  className="bujo-input text-sm"
+        <p className="text-xs text-[var(--bujo-subtle)]">
+          Provide demo data as JSON arrays with exactly 7 values (newest at the end).
+        </p>
+        <div className="space-y-4">
+          {answerTypes.map((at) => {
+            const parsed = parsedDemoByTypeId[at.id];
+            return (
+              <div key={at.id} className="space-y-2">
+                <div>
+                  <p className="text-xs font-semibold text-[var(--bujo-ink)]">
+                    {at.name} ({at.type})
+                  </p>
+                  <p className="text-[11px] text-[var(--bujo-subtle)]">Demo data (7 days)</p>
+                </div>
+                <textarea
+                  value={demoDataByTypeId[at.id] ?? ""}
+                  onChange={(e) =>
+                    setDemoDataByTypeId((prev) => ({
+                      ...prev,
+                      [at.id]: e.target.value,
+                    }))
+                  }
+                  rows={3}
+                  className="bujo-input text-xs"
                 />
+                {parsed?.error && <p className="text-xs text-[var(--bujo-subtle)]">{parsed.error}</p>}
               </div>
-              <div>
-                <label className="text-xs font-semibold text-[var(--bujo-ink)]">Number max</label>
-                <input
-                  type="number"
-                  value={previewNumberMax}
-                  onChange={(e) => setPreviewNumberMax(Number(e.target.value))}
-                  className="bujo-input text-sm"
-                />
-              </div>
-            </>
-          )}
-          {primaryAnswerType?.type === "scale" && (
-            <>
-              <div>
-                <label className="text-xs font-semibold text-[var(--bujo-ink)]">Scale min</label>
-                <input
-                  type="number"
-                  value={previewScaleMin}
-                  onChange={(e) => setPreviewScaleMin(Number(e.target.value))}
-                  className="bujo-input text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[var(--bujo-ink)]">Scale max</label>
-                <input
-                  type="number"
-                  value={previewScaleMax}
-                  onChange={(e) => setPreviewScaleMax(Number(e.target.value))}
-                  className="bujo-input text-sm"
-                />
-              </div>
-            </>
-          )}
+            );
+          })}
         </div>
       </div>
 
-      {demoAnswersWithMeta.length > 0 && (
+      {demoAnswers.length > 0 && (
         <div className="mt-4">
           <InsightsChart
-            answers={demoAnswersWithMeta}
-            chartPalette={parsedColors as Partial<ChartPalette>}
+            answers={demoAnswers}
+            chartPalette={null}
             chartStyle="gradient"
             userQuestions={[]}
           />
@@ -328,12 +341,11 @@ export default function PreviewSection({
           </p>
           <div className="mt-2 space-y-2">
             {answerTypes.map((at) => {
-              const typeAnswers = generateDemoAnswers(
-                at,
-                Math.min(previewDays, 14),
-                `preview-${at.id}`,
-                questionTitle,
-              );
+              const parsed = parsedDemoByTypeId[at.id];
+              const typeAnswers =
+                parsed && !parsed.error
+                  ? buildDemoAnswersFromValues(at, parsed.values, `preview-${at.id}`, questionTitle)
+                  : [];
               return (
                 <div key={at.id} className="rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3">
                   <p className="text-xs font-semibold text-[var(--bujo-ink)]">
@@ -343,7 +355,7 @@ export default function PreviewSection({
                     <div className="mt-2">
                       <InsightsChart
                         answers={typeAnswers}
-                        chartPalette={parsedColors as Partial<ChartPalette>}
+                        chartPalette={null}
                         chartStyle="gradient"
                         userQuestions={[]}
                       />
@@ -360,8 +372,8 @@ export default function PreviewSection({
         <div className="mt-4">
           <h3 className="text-sm font-semibold text-[var(--bujo-ink)]">Display Options</h3>
           <p className="text-xs text-[var(--bujo-subtle)]">
-            Preview of how the question will look with different display options. Note: Only "graph" display is
-            currently previewed here.
+            Preview of allowed display options for this answer type. Note: Only "graph" display is currently previewed
+            here.
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {displayOptions.map((opt) => (

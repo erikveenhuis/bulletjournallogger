@@ -83,7 +83,7 @@ export async function PUT(request: Request) {
   }
 
   const body = await request.json();
-  const { timezone, reminder_time, push_opt_in, chart_palette, chart_style } = body;
+  const { timezone, reminder_time, push_opt_in, chart_palette, chart_style, account_tier } = body;
 
   if (
     reminder_time !== undefined &&
@@ -94,6 +94,14 @@ export async function PUT(request: Request) {
       { error: "Reminder time must be in 5-minute increments (HH:MM)." },
       { status: 400 },
     );
+  }
+
+  let normalizedTier: number | undefined;
+  if (account_tier !== undefined) {
+    if (!Number.isInteger(account_tier) || account_tier < 0 || account_tier > 4) {
+      return NextResponse.json({ error: "account_tier must be an integer between 0 and 4." }, { status: 400 });
+    }
+    normalizedTier = account_tier;
   }
 
   const normalizedPalette = normalizePalette(chart_palette);
@@ -115,16 +123,22 @@ export async function PUT(request: Request) {
     }
   }
 
+  const payload: Record<string, unknown> = {
+    user_id: user.id,
+    timezone,
+    reminder_time: typeof reminder_time === "string" ? reminder_time.slice(0, 5) : reminder_time,
+    push_opt_in,
+    chart_palette: normalizedPalette === undefined ? undefined : normalizedPalette,
+    chart_style: normalizedChartStyle,
+  };
+
+  if (normalizedTier !== undefined) {
+    payload.account_tier = normalizedTier;
+  }
+
   const { error } = await supabase
     .from("profiles")
-    .upsert({
-      user_id: user.id,
-      timezone,
-      reminder_time: typeof reminder_time === "string" ? reminder_time.slice(0, 5) : reminder_time,
-      push_opt_in,
-      chart_palette: normalizedPalette === undefined ? undefined : normalizedPalette,
-      chart_style: normalizedChartStyle,
-    })
+    .upsert(payload)
     .select()
     .single();
 

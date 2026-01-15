@@ -11,6 +11,7 @@ export type Profile = {
   reminder_time: string | null;
   push_opt_in: boolean | null;
   is_admin: boolean | null;
+  account_tier?: number | null;
   chart_palette?: ChartPalette | null;
   chart_style?: ChartStyle | null;
 };
@@ -42,7 +43,9 @@ export type AnswerType = {
   type: "boolean" | "number" | "scale" | "text" | "emoji" | "yes_no_list";
   items: string[] | null;
   meta: Record<string, unknown> | null;
-  created_by: string | null;
+  default_display_option?: DisplayOption;
+  allowed_display_options?: DisplayOption[] | null;
+  is_active?: boolean | null;
   created_at: string | null;
 };
 
@@ -53,10 +56,10 @@ export type QuestionTemplate = {
   meta: Record<string, unknown> | null;
   is_active: boolean | null;
   answer_type_id: string;
-  allowed_answer_type_ids?: string[] | null;
+  created_by?: string | null;
+  created_at?: string | null;
   default_display_option?: DisplayOption;
   allowed_display_options?: DisplayOption[] | null;
-  default_colors?: ChartPalette | null;
   categories?: {
     name: string;
   } | null;
@@ -70,10 +73,8 @@ export type UserQuestion = {
   sort_order: number | null;
   custom_label: string | null;
   is_active: boolean | null;
-  answer_type_override_id?: string | null;
   display_option_override?: DisplayOption | null;
   color_palette?: ChartPalette | null;
-  answer_type_override?: AnswerType | null;
   template?: QuestionTemplate;
   category?: Category;
 };

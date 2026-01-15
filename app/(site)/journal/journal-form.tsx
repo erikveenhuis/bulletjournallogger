@@ -21,9 +21,10 @@ import type { UserQuestion } from "@/lib/types";
 type Props = {
   date: string;
   userQuestions: UserQuestion[];
+  accountTier: number;
 };
 
-type AnswerValue = string | number | boolean | boolean[] | null;
+type AnswerValue = string | number | boolean | string[] | null;
 
 type AnswerRow = {
   template_id: string;
@@ -33,18 +34,29 @@ type AnswerRow = {
   scale_value: number | null;
   emoji_value: string | null;
   text_value: string | null;
+  answer_types?:
+    | {
+        type?: string | null;
+        meta?: Record<string, unknown> | null;
+        items?: string[] | null;
+      }
+    | null;
   question_templates?:
     | {
         id?: string;
         title?: string;
-        answer_types?: { type?: string | null; meta?: Record<string, unknown> | null } | null;
+        answer_types?: {
+          type?: string | null;
+          meta?: Record<string, unknown> | null;
+          items?: string[] | null;
+        } | null;
       }
     | null;
 };
 
 type DayStatus = "full" | "partial";
 
-export default function JournalForm({ date, userQuestions }: Props) {
+export default function JournalForm({ date, userQuestions, accountTier }: Props) {
   const todayDate = startOfToday();
   const [selectedDate, setSelectedDate] = useState(date);
   const [currentMonth, setCurrentMonth] = useState(() => parseISO(date));
@@ -71,10 +83,34 @@ export default function JournalForm({ date, userQuestions }: Props) {
       ),
     [userQuestions],
   );
-  const validTemplateIds = useMemo(() => validUserQuestions.map((uq) => uq.template_id), [validUserQuestions]);
+
+  const filteredUserQuestions = useMemo(() => {
+    let filtered = [...validUserQuestions];
+    if (accountTier < 3) {
+      filtered = filtered.filter((uq) => !uq.template.created_by || uq.template.created_by !== uq.user_id);
+    }
+    return filtered;
+  }, [accountTier, validUserQuestions]);
+
+  const eligibleUserQuestions = useMemo(() => {
+    if (accountTier === 0) {
+      return filteredUserQuestions.slice(0, 3);
+    }
+    return filteredUserQuestions;
+  }, [accountTier, filteredUserQuestions]);
+
+  const freeTierLockedQuestions = useMemo(() => {
+    if (accountTier !== 0) return [];
+    return filteredUserQuestions.slice(3);
+  }, [accountTier, filteredUserQuestions]);
+
+  const validTemplateIds = useMemo(
+    () => eligibleUserQuestions.map((uq) => uq.template_id),
+    [eligibleUserQuestions],
+  );
 
   const getAnswerTypeForQuestion = (uq: UserQuestion & { template: NonNullable<UserQuestion["template"]> }) =>
-    uq.answer_type_override || uq.template.answer_types;
+    uq.template.answer_types;
 
   const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const selectedDateObj = selectedDate ? parseISO(selectedDate) : todayDate;
@@ -123,23 +159,43 @@ export default function JournalForm({ date, userQuestions }: Props) {
         data.forEach((ans) => {
           if (!ans.template_id) return;
           // Check if this is a yes_no_list type by looking at the template from the answer
-          const answerType = ans.question_templates?.answer_types?.type;
+          const answerType =
+            ans.answer_types?.type ??
+            ans.question_templates?.answer_types?.type;
           if (answerType === "yes_no_list") {
+            const items =
+              ans.answer_types?.items ??
+              ans.question_templates?.answer_types?.items ??
+              [];
             // For yes_no_list: if bool_value is false, it's "No"
             // If text_value exists, parse it as JSON array (it's "Yes" with selections)
             if (ans.bool_value === false) {
               map[ans.template_id] = false;
               return;
             }
+            if (ans.bool_value === true && (ans.text_value === null || ans.text_value === undefined)) {
+              map[ans.template_id] = [];
+              return;
+            }
             if (ans.text_value !== null && ans.text_value !== undefined) {
               try {
                 const parsed = JSON.parse(ans.text_value);
                 if (Array.isArray(parsed)) {
-                  map[ans.template_id] = parsed;
+                  const hasBooleans = parsed.some((val) => typeof val === "boolean");
+                  if (hasBooleans && items.length > 0) {
+                    const selected = parsed
+                      .map((val, index) => (val ? items[index] : null))
+                      .filter((val): val is string => typeof val === "string");
+                    map[ans.template_id] = selected;
+                    return;
+                  }
+                  map[ans.template_id] = parsed
+                    .map((val) => String(val))
+                    .filter((val) => val.length > 0);
                   return;
                 }
               } catch {
-                // If parsing fails, treat as empty array
+                // If parsing fails, treat as empty array (Yes with no selections)
                 map[ans.template_id] = [];
                 return;
               }
@@ -267,7 +323,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
         if (!auto) setError("Pick a date first.");
         return;
       }
-        if (validUserQuestions.length === 0) {
+      if (eligibleUserQuestions.length === 0) {
         if (!auto) setError("No questions to save. Add questions in your profile first.");
         return;
       }
@@ -276,12 +332,14 @@ export default function JournalForm({ date, userQuestions }: Props) {
       if (!auto) setError(null);
       setSaving(true);
 
-      const payload = validUserQuestions.map((uq) => {
+      const payload = eligibleUserQuestions.map((uq) => {
         const template = uq.template;
         const answerType = getAnswerTypeForQuestion(uq);
+        const answerTypeId = uq.template.answer_type_id;
         return {
           template_id: uq.template_id,
           type: answerType?.type ?? "text",
+          answer_type_id: answerTypeId,
           value: valuesToUse[uq.template_id],
           prompt_snapshot: template.title,
           category_snapshot: template.categories?.name,
@@ -320,7 +378,7 @@ export default function JournalForm({ date, userQuestions }: Props) {
       });
       setError(null);
     },
-    [selectedDate, values, saving, computeDayStatus, validUserQuestions],
+    [selectedDate, values, saving, computeDayStatus, eligibleUserQuestions],
   );
 
   const handleClearAllAnswers = useCallback(async () => {
@@ -424,12 +482,12 @@ export default function JournalForm({ date, userQuestions }: Props) {
     if (!hasUserEdited) return;
     if (loadingExisting) return;
     if (saving) return;
-    if (validUserQuestions.length === 0) return;
+    if (eligibleUserQuestions.length === 0) return;
     const timer = setTimeout(() => {
       void saveAnswers({ auto: true, targetDate: selectedDate, currentValues: values });
     }, 800);
     return () => clearTimeout(timer);
-  }, [values, hasUserEdited, saveAnswers, selectedDate, loadingExisting, validUserQuestions.length, saving]);
+  }, [values, hasUserEdited, saveAnswers, selectedDate, loadingExisting, eligibleUserQuestions.length, saving]);
 
   const getStatusMeta = (templateId: string) => {
     const current = values[templateId] ?? null;
@@ -602,14 +660,14 @@ export default function JournalForm({ date, userQuestions }: Props) {
           {loadingMonth && <p className="text-xs text-gray-600">Updating calendar…</p>}
           {loadingExisting && <p className="text-sm text-gray-600">Loading saved answers for that date…</p>}
         </div>
-        {validUserQuestions.map((uq) => {
+        {eligibleUserQuestions.map((uq) => {
           const t = uq.template;
           const prompt = uq.custom_label || t.title;
           const isWaterQuestion = (t.title ?? "").trim().toLowerCase() === "how many cups of water?";
           const status = getStatusMeta(uq.template_id);
           const answerType = getAnswerTypeForQuestion(uq);
-        const numericValue = values[uq.template_id];
-        const numberInputValue = typeof numericValue === "number" ? numericValue : "";
+          const numericValue = values[uq.template_id];
+          const numberInputValue = typeof numericValue === "number" ? numericValue : "";
           const questionClassName = isWaterQuestion
             ? "doodle-border space-y-3 bg-[var(--bujo-paper)] p-4"
             : "bujo-question space-y-3";
@@ -748,9 +806,9 @@ export default function JournalForm({ date, userQuestions }: Props) {
                 }
                 const items = Array.isArray(answerType.items) ? answerType.items : [];
                 const currentValue = values[uq.template_id];
+                const selectedItems = Array.isArray(currentValue) ? currentValue : [];
                 const isYes = Array.isArray(currentValue);
                 const isNo = currentValue === false;
-                const booleanArray = Array.isArray(currentValue) ? currentValue : [];
 
                 return (
                   <div className="space-y-3">
@@ -762,8 +820,8 @@ export default function JournalForm({ date, userQuestions }: Props) {
                           className="h-4 w-4 accent-[#7c5cff]"
                           checked={isYes}
                           onChange={() => {
-                            // Initialize with all false values
-                            setValue(uq.template_id, new Array(items.length).fill(false));
+                            // Yes selected with no items checked yet
+                            setValue(uq.template_id, []);
                           }}
                         />
                         Yes
@@ -785,15 +843,15 @@ export default function JournalForm({ date, userQuestions }: Props) {
                           <label key={index} className="flex items-center gap-2 text-sm text-gray-800">
                             <input
                               type="checkbox"
-                              checked={booleanArray[index] === true}
+                              checked={selectedItems.includes(item)}
                               onChange={(e) => {
-                                const newArray = [...booleanArray];
-                                // Ensure array is long enough
-                                while (newArray.length <= index) {
-                                  newArray.push(false);
+                                const next = new Set(selectedItems);
+                                if (e.target.checked) {
+                                  next.add(item);
+                                } else {
+                                  next.delete(item);
                                 }
-                                newArray[index] = e.target.checked;
-                                setValue(uq.template_id, newArray);
+                                setValue(uq.template_id, Array.from(next));
                               }}
                               className="h-4 w-4 accent-[#7c5cff]"
                             />
@@ -817,6 +875,141 @@ export default function JournalForm({ date, userQuestions }: Props) {
           <p className="bujo-note text-sm text-red-800">
             Your saved questions reference missing templates. Re-add them from your profile.
           </p>
+        )}
+        {accountTier < 3 &&
+          validUserQuestions.some((uq) => uq.template?.created_by && uq.template.created_by === uq.user_id) && (
+            <p className="bujo-note text-sm text-amber-800">
+              Some custom questions are disabled on your current tier.{" "}
+              <a href="/profile/account" className="underline">
+                Upgrade your account
+              </a>{" "}
+              or remove them from My questions.
+            </p>
+          )}
+        {accountTier === 0 && freeTierLockedQuestions.length > 0 && (
+          <>
+            <p className="bujo-note text-sm text-amber-800">
+              Free tier answers only the first 3 questions in your list.{" "}
+              <a href="/profile/account" className="underline">
+                Upgrade your account
+              </a>{" "}
+              to answer more or adjust your list in{" "}
+              <a href="/profile/questions" className="underline">
+                My questions
+              </a>
+              .
+            </p>
+            {freeTierLockedQuestions.map((uq) => {
+              const t = uq.template;
+              const prompt = uq.custom_label || t.title;
+              const answerType = getAnswerTypeForQuestion(uq);
+              return (
+                <div key={`locked-${uq.id}`} className="bujo-question space-y-3 opacity-60" aria-disabled="true">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {prompt}
+                    </p>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="bujo-tag">{answerType?.type ?? "unknown"}</span>
+                      {t.categories?.name ? (
+                        <span className="bujo-tag">{t.categories.name}</span>
+                      ) : null}
+                      <span className="bujo-tag">Locked on free tier</span>
+                    </div>
+                  </div>
+                  {answerType?.type === "boolean" && (
+                    <div className="flex flex-wrap items-center gap-4 text-sm text-gray-800">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          disabled
+                          className="h-4 w-4 accent-[#7c5cff]"
+                        />
+                        Yes
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          disabled
+                          className="h-4 w-4 accent-[#7c5cff]"
+                        />
+                        No
+                      </label>
+                    </div>
+                  )}
+                  {answerType?.type === "number" && (
+                    <input
+                      type="number"
+                      className="bujo-input"
+                      disabled
+                      value=""
+                      placeholder="Upgrade to answer"
+                      readOnly
+                    />
+                  )}
+                  {answerType?.type === "scale" && (() => {
+                    const meta = (answerType?.meta as Record<string, unknown>) || {};
+                    const min = typeof meta.min === "number" ? meta.min : 1;
+                    const max = typeof meta.max === "number" ? meta.max : 5;
+                    const mid = Math.round((min + max) / 2);
+                    return (
+                      <div className="flex flex-wrap items-center gap-3">
+                        <input
+                          type="range"
+                          min={min}
+                          max={max}
+                          value={mid}
+                          disabled
+                          className="bujo-range w-full"
+                        />
+                        <span className="text-sm font-semibold text-gray-800">{mid}</span>
+                      </div>
+                    );
+                  })()}
+                  {answerType?.type === "emoji" && (
+                    <select className="bujo-input" disabled value="">
+                      <option value="">Upgrade to answer</option>
+                    </select>
+                  )}
+                  {answerType?.type === "text" && (
+                    <textarea
+                      className="bujo-input"
+                      rows={3}
+                      disabled
+                      value=""
+                      placeholder="Upgrade to answer"
+                      readOnly
+                    />
+                  )}
+                  {answerType?.type === "yes_no_list" && (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-4 text-sm text-gray-800">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            disabled
+                            className="h-4 w-4 accent-[#7c5cff]"
+                          />
+                          Yes
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            disabled
+                            className="h-4 w-4 accent-[#7c5cff]"
+                          />
+                          No
+                        </label>
+                      </div>
+                      <div className="space-y-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3">
+                        <p className="text-sm text-gray-600">Upgrade to select items.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </>
         )}
         {error && <p className="bujo-message text-sm text-red-700">{error}</p>}
       </div>

@@ -10,7 +10,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("answers")
-    .select("*, question_templates(title, categories(name), answer_types(type))")
+    .select("*, answer_types(type), question_templates(title, categories(name), answer_types(type))")
     .eq("user_id", user.id)
     .order("question_date", { ascending: false });
 
@@ -29,6 +29,7 @@ export async function GET() {
   ];
   type AnswerRow = {
     question_date: string;
+    answer_types?: { type: string | null } | null;
     question_templates: {
       title: string | null;
       categories?: { name: string | null };
@@ -55,7 +56,7 @@ export async function GET() {
       (row as AnswerRow).question_date,
       row.question_templates?.title ?? "",
       row.question_templates?.categories?.name ?? "",
-      row.question_templates?.answer_types?.type ?? "",
+      (row as AnswerRow).answer_types?.type ?? row.question_templates?.answer_types?.type ?? "",
       value,
       row.prompt_snapshot ?? "",
       row.category_snapshot ?? "",
