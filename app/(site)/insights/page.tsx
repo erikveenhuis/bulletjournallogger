@@ -12,7 +12,7 @@ export default async function InsightsPage() {
 
   if (!effectiveUser) {
     return (
-      <div className="bujo-note text-sm text-yellow-900">
+      <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
         Please <Link href="/sign-in">sign in</Link> to view insights.
       </div>
     );
