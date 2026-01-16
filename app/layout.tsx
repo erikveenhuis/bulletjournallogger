@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Shadows_Into_Light } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/header";
 import PushManager from "@/components/push-manager";
+import BackNav from "@/components/back-nav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -75,6 +76,7 @@ export default function RootLayout({
         <PushManager />
         <Header />
         <main className="mx-auto max-w-6xl px-4 pb-14 pt-8 sm:px-6 sm:pb-16 sm:pt-12 bujo-shell">
+          <BackNav />
           {children}
         </main>
       </body>

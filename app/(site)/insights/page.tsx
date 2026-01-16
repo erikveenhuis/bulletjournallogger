@@ -63,7 +63,7 @@ export default async function InsightsPage() {
         </div>
         <a
           href="/api/export"
-          className="bujo-btn-secondary w-full justify-center text-sm sm:w-auto"
+          className="bujo-btn w-full justify-center text-sm sm:w-auto"
         >
           Download CSV
         </a>
