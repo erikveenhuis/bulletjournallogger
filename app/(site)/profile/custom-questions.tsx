@@ -50,26 +50,38 @@ export default function CustomQuestions({ categories, answerTypes, templates }: 
     }
 
     setSubmitting(true);
-    const res = await fetch("/api/question-templates", {
-      method: editingId ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...(editingId ? { id: editingId } : {}),
-        title: title.trim(),
-        category_id: categoryId || null,
-        meta,
-        is_active: true,
-        answer_type_id: answerTypeId,
-      }),
-    });
-    const data = await res.json();
-    setSubmitting(false);
-    if (!res.ok) {
-      setMessage(data.error || `Could not ${editingId ? "update" : "add"} question`);
-      return;
+    try {
+      const res = await fetch("/api/question-templates", {
+        method: editingId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(editingId ? { id: editingId } : {}),
+          title: title.trim(),
+          category_id: categoryId || null,
+          meta,
+          is_active: true,
+          answer_type_id: answerTypeId,
+        }),
+      });
+      let data: { error?: string } | null = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+      if (!res.ok) {
+        setMessage(data?.error || `Could not ${editingId ? "update" : "add"} question`);
+        return;
+      }
+      resetForm();
+      setMessage(editingId ? "Question updated." : "Question added.");
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed.";
+      setMessage(message);
+    } finally {
+      setSubmitting(false);
     }
-    resetForm();
-    router.refresh();
   };
 
   const deleteTemplate = async () => {

@@ -1,12 +1,24 @@
 import { NextResponse } from "next/server";
+import {
+  getEffectiveSupabaseClient,
+  getEffectiveUser,
+  isImpersonating,
+} from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-async function requireUser() {
-  const supabase = await createServerSupabaseClient();
+async function requireEffectiveUser() {
+  const authClient = await createServerSupabaseClient();
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return { supabase, user };
+    data: { user: actualUser },
+  } = await authClient.auth.getUser();
+  if (!actualUser) {
+    return { supabase: authClient, user: null, impersonating: false };
+  }
+
+  const { user: effectiveUser } = await getEffectiveUser();
+  const impersonating = await isImpersonating();
+  const supabase = await getEffectiveSupabaseClient();
+  return { supabase, user: effectiveUser ?? actualUser, impersonating };
 }
 
 async function getProfileAccess(
@@ -41,11 +53,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { supabase, user } = await requireUser();
+  const { supabase, user, impersonating } = await requireEffectiveUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const { isAdmin, accountTier } = await getProfileAccess(supabase, user.id);
+  const { isAdmin: profileIsAdmin, accountTier } = await getProfileAccess(supabase, user.id);
+  const isAdmin = !impersonating && profileIsAdmin;
   if (!isAdmin && accountTier < 3) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -105,17 +118,21 @@ export async function POST(request: Request) {
     created_by: user.id,
   });
   if (error) {
+    if (error.code === "23505" && error.message?.includes("question_templates_title_per_user_ci")) {
+      return NextResponse.json({ error: "You already have a question with this title." }, { status: 409 });
+    }
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
   return NextResponse.json({ success: true });
 }
 
 export async function PUT(request: Request) {
-  const { supabase, user } = await requireUser();
+  const { supabase, user, impersonating } = await requireEffectiveUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const { isAdmin, accountTier } = await getProfileAccess(supabase, user.id);
+  const { isAdmin: profileIsAdmin, accountTier } = await getProfileAccess(supabase, user.id);
+  const isAdmin = !impersonating && profileIsAdmin;
   if (!isAdmin && accountTier < 3) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -182,20 +199,21 @@ export async function PUT(request: Request) {
 
   const { error } = await supabase.from("question_templates").update(updates).eq("id", id);
   if (error) {
+    if (error.code === "23505" && error.message?.includes("question_templates_title_per_user_ci")) {
+      return NextResponse.json({ error: "You already have a question with this title." }, { status: 409 });
+    }
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
   return NextResponse.json({ success: true });
 }
 
 export async function DELETE(request: Request) {
-  const { supabase, user } = await requireUser();
+  const { supabase, user, impersonating } = await requireEffectiveUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const { isAdmin, accountTier } = await getProfileAccess(supabase, user.id);
-  if (!isAdmin && accountTier < 3) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const { isAdmin: profileIsAdmin } = await getProfileAccess(supabase, user.id);
+  const isAdmin = !impersonating && profileIsAdmin;
 
   const body = await request.json();
   const { id } = body;
