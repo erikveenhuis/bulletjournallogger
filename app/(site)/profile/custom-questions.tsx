@@ -2,16 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { AnswerType, Category, QuestionTemplate } from "@/lib/types";
+import type { AnswerType, Category, QuestionTemplate, UserQuestion } from "@/lib/types";
 import ConfirmDialog from "@/components/confirm-dialog";
 
 type Props = {
   categories: Category[];
   answerTypes: AnswerType[];
   templates: QuestionTemplate[];
+  userQuestions: UserQuestion[];
 };
 
-export default function CustomQuestions({ categories, answerTypes, templates }: Props) {
+export default function CustomQuestions({ categories, answerTypes, templates, userQuestions }: Props) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -20,7 +21,9 @@ export default function CustomQuestions({ categories, answerTypes, templates }: 
   const [meta, setMeta] = useState<Record<string, unknown>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [addingId, setAddingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<QuestionTemplate | null>(null);
+  const selectedTemplateIds = new Set(userQuestions.map((u) => u.template_id));
 
   const resetForm = () => {
     setEditingId(null);
@@ -98,6 +101,29 @@ export default function CustomQuestions({ categories, answerTypes, templates }: 
     }
     setPendingDelete(null);
     router.refresh();
+  };
+
+  const addToDailyList = async (templateId: string) => {
+    setAddingId(templateId);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/user-questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ template_id: templateId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage(data.error || "Could not add question.");
+        return;
+      }
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed.";
+      setMessage(message);
+    } finally {
+      setAddingId(null);
+    }
   };
 
   return (
@@ -181,6 +207,17 @@ export default function CustomQuestions({ categories, answerTypes, templates }: 
               </p>
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={() => addToDailyList(t.id)}
+                disabled={selectedTemplateIds.has(t.id) || addingId === t.id}
+                className="bujo-btn text-xs disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {selectedTemplateIds.has(t.id)
+                  ? "Added"
+                  : addingId === t.id
+                    ? "Adding..."
+                    : "Add to daily list"}
+              </button>
               <button onClick={() => loadTemplate(t)} className="bujo-btn-secondary text-xs">
                 Edit
               </button>

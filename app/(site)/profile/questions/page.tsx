@@ -86,6 +86,7 @@ export default async function QuestionsPage() {
           categories={categories || []}
           answerTypes={(answerTypes || []) as AnswerType[]}
           templates={(customTemplates || []) as QuestionTemplate[]}
+          userQuestions={(userQuestions || []) as UserQuestion[]}
         />
       ) : (
         <div className="rounded-lg border border-[var(--bujo-border)] bg-white p-4 text-sm text-gray-700">
