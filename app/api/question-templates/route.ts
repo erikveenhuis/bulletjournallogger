@@ -102,6 +102,7 @@ export async function POST(request: Request) {
     meta,
     is_active = true,
     answer_type_id,
+    scope,
   } = body;
   if (!answer_type_id) {
     return NextResponse.json({ error: "answer_type_id is required" }, { status: 400 });
@@ -140,13 +141,18 @@ export async function POST(request: Request) {
     metaPayload = {};
   }
 
+  const isGlobalRequest = scope === "global";
+  if (isGlobalRequest && !isAdmin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const { error } = await supabase.from("question_templates").insert({
     title,
     category_id,
     meta: metaPayload,
     is_active,
     answer_type_id,
-    created_by: user.id,
+    created_by: isGlobalRequest ? null : user.id,
   });
   if (error) {
     if (error.code === "23505" && error.message?.includes("question_templates_title_per_user_ci")) {

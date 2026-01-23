@@ -385,6 +385,11 @@ a:hover {
     0 0 0 3px rgba(95, 139, 122, 0.18);
 }
 
+.bujo-input[data-emoji-only="true"] {
+  font-size: 1.4rem;
+  line-height: 1.4;
+}
+
 .bujo-question {
   border-radius: 14px;
   border: 1.5px dashed var(--bujo-border);

@@ -45,6 +45,7 @@ export default async function QuestionsPage() {
   const { data: templates } = await supabase
     .from("question_templates")
     .select("*, categories(name), answer_types(*)")
+    .is("created_by", null)
     .eq("is_active", true)
     .order("title");
 

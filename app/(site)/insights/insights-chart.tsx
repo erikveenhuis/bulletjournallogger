@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Bar, Line } from "react-chartjs-2";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bar, Line, getElementAtEvent } from "react-chartjs-2";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -42,6 +42,7 @@ type AnswerRow = {
           type?: string | null;
           meta?: Record<string, unknown> | null;
           default_display_option?: DisplayOption | null;
+          allowed_display_options?: DisplayOption[] | null;
         } | null;
       }
     | null;
@@ -57,14 +58,23 @@ type QuestionSeries = {
   typeLabel: string;
   unit?: string;
   points: Array<{ date: string; value: number }>;
-  textPoints?: Array<{ date: string; value: string }>;
+  textPoints?: Array<{ date: string; value: string; rawValue?: string | string[] }>;
   palette?: ChartPalette;
   defaultDisplayOption?: DisplayOption;
+  allowedDisplayOptions?: DisplayOption[];
+  choiceSteps?: string[];
 };
 
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const defaultPalette = defaultThemeDefaults.chart_palette;
 const defaultStyle = defaultThemeDefaults.chart_style;
+const defaultChoiceSteps = ["1", "2", "3", "4", "5"];
+const displayOptionLabels: Record<DisplayOption, string> = {
+  graph: "Graph",
+  list: "List",
+  grid: "Grid",
+  count: "Count",
+};
 
 type ScaleColors = {
   veryLow: string;
@@ -87,6 +97,22 @@ function normalizeHexColor(value?: string | null) {
 
 function normalizeDisplayOption(value: unknown): DisplayOption | null {
   return value === "list" || value === "grid" || value === "count" || value === "graph" ? value : null;
+}
+
+function normalizeDisplayOptions(values: unknown): DisplayOption[] {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map((value) => normalizeDisplayOption(value))
+    .filter((value): value is DisplayOption => value !== null);
+}
+
+function getChoiceSteps(meta?: Record<string, unknown> | null) {
+  const rawSteps = meta?.["steps"];
+  if (Array.isArray(rawSteps)) {
+    const normalized = rawSteps.map((step) => String(step).trim()).filter((step) => step.length > 0);
+    if (normalized.length >= 2) return normalized;
+  }
+  return defaultChoiceSteps;
 }
 
 function sanitizePalette(input?: Partial<ChartPalette> | null, fallback?: ChartPalette): ChartPalette {
@@ -158,6 +184,9 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
       const defaultDisplay = normalizeDisplayOption(
         row.question_templates?.answer_types?.default_display_option,
       );
+      const allowedDisplays = normalizeDisplayOptions(
+        row.question_templates?.answer_types?.allowed_display_options,
+      );
       const rawType = row.question_templates?.answer_types?.type as QuestionSeries["type"] | undefined;
       const type =
         rawType === "boolean" ||
@@ -169,16 +198,21 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
           : "other";
       const templateId = row.template_id || undefined;
       const palette = (override?.color_palette as ChartPalette | undefined) || undefined;
-      const textValue = (() => {
+      const textEntry = (() => {
         if (type === "text" || type === "single_choice") {
-          return row.text_value ?? null;
+          const raw = row.text_value ?? null;
+          return raw ? { display: raw, raw } : null;
         }
         if (type === "multi_choice") {
           if (!row.text_value) return null;
           try {
             const parsed = JSON.parse(row.text_value);
             if (Array.isArray(parsed)) {
-              return parsed.map((entry) => String(entry)).join(", ");
+              const normalized = parsed.map((entry) => String(entry));
+              return {
+                display: normalized.join(", "),
+                raw: normalized,
+              };
             }
           } catch {
             return null;
@@ -198,7 +232,7 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
             : null;
 
       if (type === "text" || type === "single_choice" || type === "multi_choice") {
-        if (!textValue || textValue.trim().length === 0) return acc;
+        if (!textEntry?.display || textEntry.display.trim().length === 0) return acc;
       } else if (value === null || value === undefined) {
         return acc;
       }
@@ -235,13 +269,22 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
               : undefined,
           palette,
           defaultDisplayOption: defaultDisplay ?? undefined,
+          allowedDisplayOptions: allowedDisplays.length > 0 ? allowedDisplays : undefined,
+          choiceSteps:
+            type === "single_choice" || type === "multi_choice"
+              ? getChoiceSteps(templateMeta ?? answerTypeMeta ?? null)
+              : undefined,
         };
       } else if (palette && !acc[id].palette) {
         acc[id].palette = palette;
       }
       if (type === "text" || type === "single_choice" || type === "multi_choice") {
-        if (textValue) {
-          acc[id].textPoints?.push({ date: row.question_date, value: textValue });
+        if (textEntry) {
+          acc[id].textPoints?.push({
+            date: row.question_date,
+            value: textEntry.display,
+            rawValue: textEntry.raw,
+          });
         }
       } else {
         acc[id].points.push({ date: row.question_date, value: Number(value) });
@@ -258,6 +301,12 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
 function average(values: number[]) {
   if (!values.length) return 0;
   return values.reduce((sum, n) => sum + n, 0) / values.length;
+}
+
+function isFutureDate(date: string) {
+  const today = new Date();
+  const target = parseISO(date);
+  return target > today;
 }
 
 function buildDailyAverages(series: QuestionSeries) {
@@ -310,6 +359,22 @@ function colorForValue(
 function upsertPoint(points: Array<{ date: string; value: number }>, date: string, value: number) {
   const filtered = points.filter((p) => p.date !== date);
   return [...filtered, { date, value }].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function upsertTextPoint(
+  points: Array<{ date: string; value: string; rawValue?: string | string[] }>,
+  date: string,
+  value: string | null,
+  rawValue?: string | string[],
+) {
+  const filtered = points.filter((p) => p.date !== date);
+  const shouldRemove =
+    value === null ||
+    value === undefined ||
+    (typeof value === "string" && value.trim().length === 0) ||
+    (Array.isArray(rawValue) && rawValue.length === 0);
+  if (shouldRemove) return filtered;
+  return [...filtered, { date, value, rawValue }].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function LegendKey({
@@ -496,12 +561,15 @@ function NumberBarChart({
   palette,
   scaleColors,
   chartStyle,
+  onSelectDay,
 }: {
   series: QuestionSeries;
   palette: ChartPalette;
   scaleColors: ScaleColors;
   chartStyle: ChartStyle;
+  onSelectDay: (date: string, value: number | undefined, isFuture: boolean) => void;
 }) {
+  const chartRef = useRef<ChartJS<"bar"> | null>(null);
   const daily = buildDailyAverages(series);
   const last = daily.slice(-14);
   const isBrush = chartStyle === "brush";
@@ -581,7 +649,72 @@ function NumberBarChart({
 
   return (
     <div className={`mt-4 bujo-chart ${isBrush ? "bujo-chart--brush" : ""} ${isSolid ? "bujo-chart--solid" : ""}`}>
-      <Bar data={data} options={options} />
+      <Bar
+        ref={chartRef}
+        data={data}
+        options={options}
+        onClick={(event) => {
+          const elements = chartRef.current ? getElementAtEvent(chartRef.current, event) : [];
+          if (!elements.length) return;
+          const index = elements[0]?.index;
+          if (typeof index !== "number") return;
+          const point = last[index];
+          if (!point) return;
+          onSelectDay(point.date, point.value, isFutureDate(point.date));
+        }}
+      />
+    </div>
+  );
+}
+
+function LineTrendChart({
+  series,
+  daily,
+  palette,
+  options,
+  isBrush,
+  isSolid,
+  onSelectDay,
+}: {
+  series: QuestionSeries;
+  daily: Array<{ date: string; value: number }>;
+  palette: ChartPalette;
+  options: ChartOptions<"line">;
+  isBrush: boolean;
+  isSolid: boolean;
+  onSelectDay: (date: string, value: number | undefined, isFuture: boolean) => void;
+}) {
+  const chartRef = useRef<ChartJS<"line"> | null>(null);
+  return (
+    <div className={`mt-4 bujo-chart ${isBrush ? "bujo-chart--brush" : ""} ${isSolid ? "bujo-chart--solid" : ""}`}>
+      <Line
+        ref={chartRef}
+        data={{
+          labels: daily.map((d) => d.date.slice(5)),
+          datasets: [
+            {
+              label: `${series.typeLabel} trend`,
+              data: daily.map((d) => d.value),
+              borderColor: toRgba(palette.accent, 0.9, "rgba(47, 74, 61, 0.85)"),
+              backgroundColor: isBrush
+                ? toRgba(palette.accent, 0.12, "rgba(47, 74, 61, 0.12)")
+                : isSolid
+                  ? toRgba(palette.accentSoft, 0.12, "rgba(95, 139, 122, 0.12)")
+                  : toRgba(palette.accentSoft, 0.18, "rgba(95, 139, 122, 0.18)"),
+            },
+          ],
+        }}
+        options={options}
+        onClick={(event) => {
+          const elements = chartRef.current ? getElementAtEvent(chartRef.current, event) : [];
+          if (!elements.length) return;
+          const index = elements[0]?.index;
+          if (typeof index !== "number") return;
+          const point = daily[index];
+          if (!point) return;
+          onSelectDay(point.date, point.value, isFutureDate(point.date));
+        }}
+      />
     </div>
   );
 }
@@ -590,6 +723,7 @@ type ModalState = {
   series: QuestionSeries;
   date: string;
   initialValue: number | undefined;
+  initialTextValue?: string | string[] | null;
   isFuture: boolean;
 };
 
@@ -602,7 +736,7 @@ function DayValueModal({
 }: {
   state: ModalState | null;
   onClose: () => void;
-  onSave: (value: number | boolean | null) => void;
+  onSave: (value: number | boolean | string | string[] | null) => void;
   saving: boolean;
   error: string | null;
 }) {
@@ -613,18 +747,26 @@ function DayValueModal({
         ? state.initialValue !== undefined && state.initialValue !== null
           ? state.initialValue >= 1
           : null
-        : state.initialValue ?? null
+        : series.type === "number"
+          ? state.initialValue ?? null
+          : series.type === "multi_choice"
+            ? Array.isArray(state.initialTextValue)
+              ? state.initialTextValue
+              : []
+            : typeof state.initialTextValue === "string"
+              ? state.initialTextValue
+              : ""
       : null;
-  const [value, setValue] = useState<number | boolean | null>(initialValue);
+  const [value, setValue] = useState<number | boolean | string | string[] | null>(initialValue);
 
   if (!state || !series) return null;
 
   const dateLabel = format(parseISO(state.date), "MMM d, yyyy");
   const disableSave =
     saving ||
-    (series.type === "boolean"
+    (series.type === "boolean" || series.type === "number"
       ? value === null || value === undefined
-      : value === null || value === undefined);
+      : false);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
@@ -675,7 +817,7 @@ function DayValueModal({
                 No
               </button>
             </div>
-          ) : (
+          ) : series.type === "number" ? (
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-600">Numeric value</label>
               <input
@@ -687,6 +829,77 @@ function DayValueModal({
                   const next = e.target.value === "" ? null : Number(e.target.value);
                   setValue(Number.isNaN(next) ? null : next);
                 }}
+              />
+            </div>
+          ) : series.type === "text" ? (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Text value</label>
+              <textarea
+                rows={3}
+                maxLength={120}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                value={typeof value === "string" ? value : ""}
+                onChange={(e) => setValue(e.target.value)}
+              />
+              <p className="text-[11px] text-gray-500">{`${typeof value === "string" ? value.length : 0}/120`}</p>
+            </div>
+          ) : series.type === "single_choice" ? (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-600">Select one</p>
+              <div className="space-y-3">
+                {(series.choiceSteps || defaultChoiceSteps).map((step) => (
+                  <label
+                    key={step}
+                    className="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800"
+                  >
+                    <input
+                      type="radio"
+                      name={`choice-${series.id}-${state.date}`}
+                      value={step}
+                      checked={value === step}
+                      onChange={() => setValue(step)}
+                    />
+                    {step}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : series.type === "multi_choice" ? (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-600">Select all that apply</p>
+              <div className="space-y-3">
+                {(series.choiceSteps || defaultChoiceSteps).map((step) => {
+                  const selected = Array.isArray(value) && value.includes(step);
+                  return (
+                    <label
+                      key={step}
+                      className="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => {
+                          if (!Array.isArray(value)) {
+                            setValue([step]);
+                            return;
+                          }
+                          setValue(selected ? value.filter((v) => v !== step) : [...value, step]);
+                        }}
+                      />
+                      {step}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Value</label>
+              <input
+                type="text"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                value={typeof value === "string" ? value : ""}
+                onChange={(e) => setValue(e.target.value)}
               />
             </div>
           )}
@@ -777,6 +990,15 @@ export default function InsightsChart({
   const [modalState, setModalState] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [displayOverrides, setDisplayOverrides] = useState<Record<string, DisplayOption | null>>(() => {
+    const initial: Record<string, DisplayOption | null> = {};
+    (userQuestions || []).forEach((uq) => {
+      initial[uq.template_id] = (uq.display_option_override as DisplayOption | null) ?? null;
+    });
+    return initial;
+  });
+  const [displaySavingById, setDisplaySavingById] = useState<Record<string, boolean>>({});
+  const [displayErrorById, setDisplayErrorById] = useState<Record<string, string | null>>({});
   const palette = useMemo(
     () => sanitizePalette(chartPalette ?? null, fallbackPalette ?? defaultPalette),
     [chartPalette, fallbackPalette],
@@ -849,12 +1071,32 @@ export default function InsightsChart({
     setSeriesData(orderedSeries);
   }, [orderedSeries]);
 
-  const handleSelectDay = (series: QuestionSeries, date: string, value: number | undefined, isFuture: boolean) => {
+  useEffect(() => {
+    const next: Record<string, DisplayOption | null> = {};
+    (userQuestions || []).forEach((uq) => {
+      next[uq.template_id] = (uq.display_option_override as DisplayOption | null) ?? null;
+    });
+    setDisplayOverrides(next);
+  }, [userQuestions]);
+
+  const handleSelectDay = (
+    series: QuestionSeries,
+    date: string,
+    value: number | undefined,
+    isFuture: boolean,
+    textValue?: string | string[] | null,
+  ) => {
     setError(null);
-    setModalState({ series, date, initialValue: value, isFuture });
+    setModalState({
+      series,
+      date,
+      initialValue: value,
+      initialTextValue: textValue ?? null,
+      isFuture,
+    });
   };
 
-  const handleSave = async (newValue: number | boolean | null) => {
+  const handleSave = async (newValue: number | boolean | string | string[] | null) => {
     if (!modalState?.series) return;
     const series = modalState.series;
     if (!series.templateId) {
@@ -864,8 +1106,21 @@ export default function InsightsChart({
     setSaving(true);
     setError(null);
 
-    const payloadValue =
-      series.type === "boolean" ? Boolean(newValue) : newValue === null ? null : Number(newValue ?? 0);
+    const payloadValue = (() => {
+      if (series.type === "boolean") {
+        return newValue === null || newValue === undefined ? null : Boolean(newValue);
+      }
+      if (series.type === "number") {
+        return newValue === null || newValue === undefined ? null : Number(newValue ?? 0);
+      }
+      if (series.type === "multi_choice") {
+        return Array.isArray(newValue) ? newValue : [];
+      }
+      if (series.type === "single_choice" || series.type === "text") {
+        return typeof newValue === "string" ? newValue : "";
+      }
+      return newValue === null || newValue === undefined ? null : String(newValue);
+    })();
 
     const res = await fetch("/api/answers", {
       method: "POST",
@@ -891,17 +1146,72 @@ export default function InsightsChart({
       return;
     }
 
-    const numericValue =
-      series.type === "boolean" ? (payloadValue ? 1 : 0) : Number(payloadValue ?? 0);
-
     setSeriesData((prev) =>
-      prev.map((s) =>
-        s.id === series.id ? { ...s, points: upsertPoint(s.points, modalState.date, numericValue) } : s,
-      ),
+      prev.map((s) => {
+        if (s.id !== series.id) return s;
+        if (series.type === "boolean" || series.type === "number") {
+          const numericValue =
+            series.type === "boolean" ? (payloadValue ? 1 : 0) : Number(payloadValue ?? 0);
+          return { ...s, points: upsertPoint(s.points, modalState.date, numericValue) };
+        }
+        const displayValue =
+          series.type === "multi_choice"
+            ? Array.isArray(payloadValue)
+              ? payloadValue.join(", ")
+              : ""
+            : typeof payloadValue === "string"
+              ? payloadValue
+              : "";
+        const updatedTextPoints = upsertTextPoint(
+          s.textPoints ?? [],
+          modalState.date,
+          displayValue,
+          Array.isArray(payloadValue) ? payloadValue : displayValue,
+        );
+        return { ...s, textPoints: updatedTextPoints };
+      }),
     );
 
     setSaving(false);
     setModalState(null);
+  };
+
+  const updateDisplayOption = async (series: QuestionSeries, nextOption: DisplayOption) => {
+    if (!series.templateId) return;
+    const defaultDisplay = series.defaultDisplayOption ?? "graph";
+    const nextOverride = nextOption === defaultDisplay ? null : nextOption;
+    const prevOverride = displayOverrides[series.templateId] ?? null;
+
+    setDisplayOverrides((prev) => ({ ...prev, [series.templateId as string]: nextOverride }));
+    setDisplaySavingById((prev) => ({ ...prev, [series.templateId as string]: true }));
+    setDisplayErrorById((prev) => ({ ...prev, [series.templateId as string]: null }));
+
+    try {
+      const res = await fetch("/api/user-questions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template_id: series.templateId,
+          display_option_override: nextOverride,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setDisplayOverrides((prev) => ({ ...prev, [series.templateId as string]: prevOverride }));
+        setDisplayErrorById((prev) => ({
+          ...prev,
+          [series.templateId as string]: body.error || "Failed to update display option.",
+        }));
+      }
+    } catch {
+      setDisplayOverrides((prev) => ({ ...prev, [series.templateId as string]: prevOverride }));
+      setDisplayErrorById((prev) => ({
+        ...prev,
+        [series.templateId as string]: "Failed to update display option.",
+      }));
+    } finally {
+      setDisplaySavingById((prev) => ({ ...prev, [series.templateId as string]: false }));
+    }
   };
 
   if (questionSeries.length === 0) {
@@ -943,6 +1253,20 @@ export default function InsightsChart({
                   ? daily.reduce((sum, item) => sum + (item.value >= 1 ? 1 : 0), 0)
                   : daily.length;
             const latestText = textPoints.length > 0 ? textPoints[textPoints.length - 1]?.value : null;
+            const overrideDisplay = series.templateId
+              ? normalizeDisplayOption(displayOverrides[series.templateId])
+              : null;
+            const seriesDisplayOption =
+              globalDisplayOption ?? overrideDisplay ?? series.defaultDisplayOption ?? "graph";
+            const baseOptions =
+              series.allowedDisplayOptions && series.allowedDisplayOptions.length > 0
+                ? series.allowedDisplayOptions
+                : [series.defaultDisplayOption ?? "graph"];
+            const displayOptions = baseOptions.includes(seriesDisplayOption)
+              ? baseOptions
+              : [...baseOptions, seriesDisplayOption];
+            const displaySaving = series.templateId ? displaySavingById[series.templateId] : false;
+            const displayError = series.templateId ? displayErrorById[series.templateId] : null;
             return (
               <>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -950,14 +1274,34 @@ export default function InsightsChart({
                     <h2 className="text-lg font-semibold text-gray-900">{series.label}</h2>
                     <p className="text-xs text-gray-600">Daily {series.typeLabel}</p>
                   </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <label htmlFor={`display-${series.id}`} className="font-semibold uppercase tracking-wide">
+                      View
+                    </label>
+                    <select
+                      id={`display-${series.id}`}
+                      className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-800 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                      value={seriesDisplayOption}
+                      onChange={(event) => updateDisplayOption(series, event.target.value as DisplayOption)}
+                      disabled={
+                        !series.templateId ||
+                        displayOptions.length <= 1 ||
+                        displaySaving
+                      }
+                    >
+                      {displayOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {displayOptionLabels[opt]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+                {displayError ? (
+                  <p className="mt-2 text-xs text-red-600">{displayError}</p>
+                ) : null}
 
                 {(() => {
-                  const overrideDisplay = series.templateId
-                    ? normalizeDisplayOption(overrideMap.get(series.templateId)?.display_option_override)
-                    : null;
-                  const seriesDisplayOption =
-                    globalDisplayOption ?? overrideDisplay ?? series.defaultDisplayOption ?? "graph";
                   return (
                 <>
                 {seriesDisplayOption === "graph" && (
@@ -972,80 +1316,71 @@ export default function InsightsChart({
                         palette={seriesPalette}
                         scaleColors={seriesScaleColors}
                         chartStyle={resolvedStyle}
+                        onSelectDay={(date, value, isFuture) => handleSelectDay(series, date, value, isFuture)}
                       />
                     ) : (
-                      <div
-                        className={`mt-4 bujo-chart ${isBrush ? "bujo-chart--brush" : ""} ${isSolid ? "bujo-chart--solid" : ""}`}
-                      >
-                        <Line
-                          data={(() => {
-                            return {
-                              labels: daily.map((d) => d.date.slice(5)),
-                              datasets: [
-                                {
-                                  label: `${series.typeLabel} trend`,
-                                  data: daily.map((d) => d.value),
-                                  borderColor: toRgba(seriesPalette.accent, 0.9, "rgba(47, 74, 61, 0.85)"),
-                                  backgroundColor: isBrush
-                                    ? toRgba(seriesPalette.accent, 0.12, "rgba(47, 74, 61, 0.12)")
-                                    : isSolid
-                                      ? toRgba(seriesPalette.accentSoft, 0.12, "rgba(95, 139, 122, 0.12)")
-                                      : toRgba(seriesPalette.accentSoft, 0.18, "rgba(95, 139, 122, 0.18)"),
-                                },
-                              ],
-                            };
-                          })()}
-                          options={(() => {
-                            const baseLineOptions = buildLineOptions(seriesPalette);
-                            const yMinBase = series.type === "boolean" ? 0 : undefined;
-                            const yMaxBase = series.type === "boolean" ? 1 : undefined;
-                            const verticalPadding = 0;
-                            const yMin =
-                              series.type === "boolean"
-                                ? -0.1
-                                : yMinBase !== undefined
-                                  ? yMinBase - verticalPadding
-                                  : undefined;
-                            const yMax =
-                              series.type === "boolean"
-                                ? 1.1
-                                : yMaxBase !== undefined
-                                  ? yMaxBase + verticalPadding
-                                  : undefined;
-                            const baseStepSize = (baseLineOptions.scales?.y as LinearScaleOptions | undefined)?.ticks?.stepSize;
-                            const stepSize =
-                              series.type === "boolean" && yMinBase !== undefined && yMaxBase !== undefined
-                                ? Math.max(1, Math.round((yMaxBase - yMinBase) / 4))
-                                : baseStepSize;
-                            const tickCallback =
-                              series.type === "boolean"
-                                ? (value: string | number) => {
-                                    const numeric = typeof value === "string" ? Number(value) : value;
-                                    if (numeric === 1) return "Yes";
-                                    if (numeric === 0) return "No";
-                                    return "";
-                                  }
-                                : baseLineOptions.scales?.y?.ticks?.callback;
+                      <LineTrendChart
+                        series={series}
+                        daily={daily}
+                        palette={seriesPalette}
+                        isBrush={isBrush}
+                        isSolid={isSolid}
+                        onSelectDay={(date, value, isFuture) => handleSelectDay(series, date, value, isFuture)}
+                        options={(() => {
+                          const baseLineOptions = buildLineOptions(seriesPalette);
+                          const yMinBase = series.type === "boolean" ? 0 : undefined;
+                          const yMaxBase = series.type === "boolean" ? 1 : undefined;
+                          const verticalPadding = 0;
+                          const yMin =
+                            series.type === "boolean"
+                              ? -0.1
+                              : yMinBase !== undefined
+                                ? yMinBase - verticalPadding
+                                : undefined;
+                          const yMax =
+                            series.type === "boolean"
+                              ? 1.1
+                              : yMaxBase !== undefined
+                                ? yMaxBase + verticalPadding
+                                : undefined;
+                          const baseStepSize =
+                            (baseLineOptions.scales?.y as LinearScaleOptions | undefined)?.ticks?.stepSize;
+                          const stepSize =
+                            series.type === "boolean" && yMinBase !== undefined && yMaxBase !== undefined
+                              ? Math.max(1, Math.round((yMaxBase - yMinBase) / 4))
+                              : baseStepSize;
+                          const tickCallback =
+                            series.type === "boolean"
+                              ? (value: string | number) => {
+                                  const numeric = typeof value === "string" ? Number(value) : value;
+                                  if (numeric === 1) return "Yes";
+                                  if (numeric === 0) return "No";
+                                  return "";
+                                }
+                              : baseLineOptions.scales?.y?.ticks?.callback;
 
-                            return {
-                              ...baseLineOptions,
-                              plugins: { ...(baseLineOptions.plugins || {}) },
-                              elements: { ...(baseLineOptions.elements || {}) },
-                              scales: {
-                                ...baseLineOptions.scales,
-                                y: {
-                                  ...baseLineOptions.scales?.y,
-                                  min: yMin,
-                                  max: yMax,
-                                  suggestedMin: yMinBase,
-                                  suggestedMax: yMaxBase,
-                                  ticks: { ...(baseLineOptions.scales?.y?.ticks || {}), stepSize, callback: tickCallback },
+                          return {
+                            ...baseLineOptions,
+                            plugins: { ...(baseLineOptions.plugins || {}) },
+                            elements: { ...(baseLineOptions.elements || {}) },
+                            scales: {
+                              ...baseLineOptions.scales,
+                              y: {
+                                ...baseLineOptions.scales?.y,
+                                min: yMin,
+                                max: yMax,
+                                suggestedMin: yMinBase,
+                                suggestedMax: yMaxBase,
+                                ticks: {
+                                  ...(baseLineOptions.scales?.y?.ticks || {}),
+                                  stepSize,
+                                  callback: tickCallback,
                                 },
                               },
-                            };
-                          })()}
-                        />
-                      </div>
+                            },
+                          };
+                        })()}
+                      />
                     )}
                   </>
                 )}
@@ -1068,15 +1403,52 @@ export default function InsightsChart({
                       <ul className="space-y-1 text-sm text-gray-800">
                         {isTextType
                           ? recentText.map((item) => (
-                              <li key={`${series.id}-${item.date}`} className="flex items-center justify-between gap-2">
-                                <span className="text-xs text-gray-600">{format(parseISO(item.date), "MMM d")}</span>
-                                <span className="text-right">{formatTextValue(item.value)}</span>
+                              <li
+                                key={`${series.id}-${item.date}`}
+                                className="flex items-center justify-between gap-2"
+                              >
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left hover:bg-gray-50"
+                                  onClick={() =>
+                                    handleSelectDay(
+                                      series,
+                                      item.date,
+                                      undefined,
+                                      isFutureDate(item.date),
+                                      item.rawValue ?? item.value,
+                                    )
+                                  }
+                                >
+                                  <span className="text-xs text-gray-600">
+                                    {format(parseISO(item.date), "MMM d")}
+                                  </span>
+                                  <span className="text-right">{formatTextValue(item.value)}</span>
+                                </button>
                               </li>
                             ))
                           : recentNumeric.map((item) => (
-                              <li key={`${series.id}-${item.date}`} className="flex items-center justify-between">
-                                <span className="text-xs text-gray-600">{format(parseISO(item.date), "MMM d")}</span>
-                                <span className="font-semibold">{formatValue(item.value)}</span>
+                              <li
+                                key={`${series.id}-${item.date}`}
+                                className="flex items-center justify-between"
+                              >
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left hover:bg-gray-50"
+                                  onClick={() =>
+                                    handleSelectDay(
+                                      series,
+                                      item.date,
+                                      item.value,
+                                      isFutureDate(item.date),
+                                    )
+                                  }
+                                >
+                                  <span className="text-xs text-gray-600">
+                                    {format(parseISO(item.date), "MMM d")}
+                                  </span>
+                                  <span className="font-semibold">{formatValue(item.value)}</span>
+                                </button>
                               </li>
                             ))}
                       </ul>

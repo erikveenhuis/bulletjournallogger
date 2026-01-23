@@ -26,6 +26,7 @@ type Props = {
 
 export default function QuestionForm({ mode, initialData, categories, answerTypes }: Props) {
   const router = useRouter();
+  const scope = "global";
   const [title, setTitle] = useState(initialData?.title ?? "");
   const [categoryId, setCategoryId] = useState(initialData?.category_id ?? "");
   const [answerTypeId, setAnswerTypeId] = useState(initialData?.answer_type_id ?? "");
@@ -105,6 +106,7 @@ export default function QuestionForm({ mode, initialData, categories, answerType
         meta: metaJson,
         is_active: mode === "edit" ? isActive : true,
         answer_type_id: answerTypeId,
+        scope,
       }),
     });
     const data = await res.json();

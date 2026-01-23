@@ -59,6 +59,7 @@ export default async function AdminQuestionEditPage({ params }: Params) {
       .from("question_templates")
       .select("*, categories(name), answer_types(*)")
       .eq("id", templateId)
+      .is("created_by", null)
       .maybeSingle(),
     adminClient.from("categories").select("*").order("name"),
     adminClient.from("answer_types").select("*").order("name"),
@@ -76,7 +77,7 @@ export default async function AdminQuestionEditPage({ params }: Params) {
   if (!questionTemplate) {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
-        Question template not found.
+        Global question template not found.
       </div>
     );
   }

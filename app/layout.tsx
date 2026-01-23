@@ -4,6 +4,7 @@ import "./globals.css";
 import Header from "@/components/header";
 import PushManager from "@/components/push-manager";
 import BackNav from "@/components/back-nav";
+import EmojiInputSizer from "@/components/emoji-input-sizer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -76,6 +77,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${journalScript.variable} ${shortStack.variable} doodle antialiased`}
       >
         <PushManager />
+        <EmojiInputSizer />
         <Header />
         <main className="mx-auto max-w-6xl px-4 pb-14 pt-8 sm:px-6 sm:pb-16 sm:pt-12 bujo-shell">
           <BackNav />

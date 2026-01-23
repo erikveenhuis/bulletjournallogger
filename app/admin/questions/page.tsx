@@ -37,7 +37,11 @@ export default async function AdminQuestionsPage() {
   const [categoriesResult, answerTypesResult, templatesResult] = await Promise.all([
     adminClient.from("categories").select("*").order("name"),
     adminClient.from("answer_types").select("*").order("name"),
-    adminClient.from("question_templates").select("*, categories(name), answer_types(*)").order("title"),
+    adminClient
+      .from("question_templates")
+      .select("*, categories(name), answer_types(*)")
+      .is("created_by", null)
+      .order("title"),
   ]);
 
   if (categoriesResult.error || answerTypesResult.error || templatesResult.error) {
