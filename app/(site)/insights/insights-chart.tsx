@@ -610,9 +610,9 @@ function DayValueModal({
   const initialValue =
     state && series
       ? series.type === "boolean"
-        ? state.initialValue !== undefined
+        ? state.initialValue !== undefined && state.initialValue !== null
           ? state.initialValue >= 1
-          : false
+          : null
         : state.initialValue ?? null
       : null;
   const [value, setValue] = useState<number | boolean | null>(initialValue);
@@ -620,7 +620,11 @@ function DayValueModal({
   if (!state || !series) return null;
 
   const dateLabel = format(parseISO(state.date), "MMM d, yyyy");
-  const disableSave = saving || (series.type !== "boolean" && (value === null || value === undefined));
+  const disableSave =
+    saving ||
+    (series.type === "boolean"
+      ? value === null || value === undefined
+      : value === null || value === undefined);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
@@ -634,7 +638,7 @@ function DayValueModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1 text-gray-500 hover:bg-gray-100"
+            className="relative z-10 -m-1 cursor-pointer rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-200"
             aria-label="Close modal"
           >
             ×
@@ -646,16 +650,28 @@ function DayValueModal({
             <div className="flex gap-2">
               <button
                 type="button"
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${value === true ? "border-purple-500 bg-purple-50 text-purple-700" : "border-gray-200 text-gray-800"}`}
+                aria-pressed={value === true}
+                className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${
+                  value === true
+                    ? "border-purple-500 bg-purple-50 text-purple-700 ring-2 ring-purple-200"
+                    : "border-gray-200 text-gray-800"
+                }`}
                 onClick={() => setValue(true)}
               >
+                <span className={`text-xs ${value === true ? "opacity-100" : "opacity-0"}`}>✓</span>
                 Yes
               </button>
               <button
                 type="button"
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${value === false ? "border-purple-500 bg-purple-50 text-purple-700" : "border-gray-200 text-gray-800"}`}
+                aria-pressed={value === false}
+                className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${
+                  value === false
+                    ? "border-purple-500 bg-purple-50 text-purple-700 ring-2 ring-purple-200"
+                    : "border-gray-200 text-gray-800"
+                }`}
                 onClick={() => setValue(false)}
               >
+                <span className={`text-xs ${value === false ? "opacity-100" : "opacity-0"}`}>✓</span>
                 No
               </button>
             </div>
@@ -696,7 +712,7 @@ function DayValueModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="cursor-pointer rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Cancel
           </button>
@@ -707,7 +723,7 @@ function DayValueModal({
             className={`rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm transition ${
               disableSave || !series.templateId
                 ? "cursor-not-allowed bg-gray-300"
-                : "bg-purple-600 hover:bg-purple-700"
+                : "cursor-pointer bg-purple-600 hover:bg-purple-700"
             }`}
           >
             {saving ? "Saving..." : "Save"}
