@@ -4,6 +4,18 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AnswerType, Category, QuestionTemplate, UserQuestion } from "@/lib/types";
 import ConfirmDialog from "@/components/confirm-dialog";
+import StepListEditor from "@/components/step-list-editor";
+
+const defaultSteps = ["1", "2", "3", "4", "5"];
+
+const normalizeSteps = (steps: string[]) =>
+  steps.map((step) => step.trim()).filter((step) => step.length > 0);
+
+const stepsFromMeta = (meta: Record<string, unknown> | null | undefined) => {
+  const raw = meta?.steps;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((step) => String(step));
+};
 
 type Props = {
   categories: Category[];
@@ -18,19 +30,30 @@ export default function CustomQuestions({ categories, answerTypes, templates, us
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [answerTypeId, setAnswerTypeId] = useState("");
-  const [meta, setMeta] = useState<Record<string, unknown>>({});
+  const [unit, setUnit] = useState("");
+  const [steps, setSteps] = useState<string[]>(() => {
+    const initialSteps = stepsFromMeta(null);
+    if (initialSteps.length > 0) return initialSteps;
+    return [];
+  });
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [addingId, setAddingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<QuestionTemplate | null>(null);
   const selectedTemplateIds = new Set(userQuestions.map((u) => u.template_id));
 
+  const selectedAnswerType = answerTypes.find((at) => at.id === answerTypeId);
+  const isChoiceType =
+    selectedAnswerType?.type === "single_choice" || selectedAnswerType?.type === "multi_choice";
+  const isNumberType = selectedAnswerType?.type === "number";
+
   const resetForm = () => {
     setEditingId(null);
     setTitle("");
     setCategoryId("");
     setAnswerTypeId("");
-    setMeta({});
+    setUnit("");
+    setSteps([]);
   };
 
   const loadTemplate = (template: QuestionTemplate) => {
@@ -38,8 +61,11 @@ export default function CustomQuestions({ categories, answerTypes, templates, us
     setTitle(template.title);
     setCategoryId(template.category_id || "");
     setAnswerTypeId(template.answer_type_id);
-    setMeta(template.meta || {});
+    setUnit(typeof template.meta?.unit === "string" ? template.meta.unit : "");
+    const initialSteps = stepsFromMeta(template.meta);
+    setSteps(initialSteps.length > 0 ? initialSteps : []);
   };
+
 
   const submit = async () => {
     setMessage(null);
@@ -50,6 +76,22 @@ export default function CustomQuestions({ categories, answerTypes, templates, us
     if (!answerTypeId) {
       setMessage("Answer type is required");
       return;
+    }
+
+    const meta: Record<string, unknown> = {};
+    if (isChoiceType) {
+      const normalized = normalizeSteps(steps);
+      const resolvedSteps = normalized.length > 0 ? normalized : defaultSteps;
+      if (resolvedSteps.length < 2) {
+        setMessage("Add at least two options for choice questions.");
+        return;
+      }
+      meta.steps = resolvedSteps;
+    } else if (isNumberType) {
+      const trimmed = unit.trim();
+      if (trimmed) {
+        meta.unit = trimmed;
+      }
     }
 
     setSubmitting(true);
@@ -158,7 +200,12 @@ export default function CustomQuestions({ categories, answerTypes, templates, us
           <select
             value={answerTypeId}
             onChange={(e) => {
-              setAnswerTypeId(e.target.value);
+              const nextId = e.target.value;
+              setAnswerTypeId(nextId);
+              const nextType = answerTypes.find((at) => at.id === nextId)?.type;
+              if ((nextType === "single_choice" || nextType === "multi_choice") && steps.length === 0) {
+                setSteps(defaultSteps);
+              }
             }}
             className="bujo-input"
           >
@@ -171,6 +218,28 @@ export default function CustomQuestions({ categories, answerTypes, templates, us
           </select>
         </div>
         <div className="space-y-2">
+          {isChoiceType && (
+            <StepListEditor
+              steps={steps}
+              onChange={setSteps}
+              label="Choice options"
+              helperText="Add at least two options. Drag to reorder."
+            />
+          )}
+          {isNumberType && (
+            <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
+              <span className="font-medium">Unit</span>
+              <input
+                placeholder="e.g. cups, steps"
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                className="bujo-input"
+              />
+              <span className="text-xs text-[var(--bujo-subtle)]">
+                Optional label used in Insights.
+              </span>
+            </label>
+          )}
           <div className="flex flex-wrap gap-2">
             <button
               onClick={submit}

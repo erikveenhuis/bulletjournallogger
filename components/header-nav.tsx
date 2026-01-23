@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useState } from "react";
 import NavLinks from "@/components/nav-links";
 
 type HeaderNavProps = {
@@ -13,11 +12,6 @@ type HeaderNavProps = {
 
 export default function HeaderNav({ showAdmin, isSignedIn, isImpersonating }: HeaderNavProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const pathname = usePathname();
-
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [pathname]);
 
   return (
     <div className="relative flex w-full items-start justify-end gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">

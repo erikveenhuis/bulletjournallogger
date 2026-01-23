@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       if (authError || !authUser.user) {
         return NextResponse.json({ error: "Target user not found" }, { status: 404 });
       }
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: "Target user not found" }, { status: 404 });
     }
 

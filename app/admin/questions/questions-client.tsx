@@ -19,17 +19,19 @@ export default function AdminForms({ categories, answerTypes, templates }: Props
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const categoryNameById = (id: string | null) => {
-    if (!id) return "";
-    const match = categories.find((c) => c.id === id);
-    return match?.name ?? "";
-  };
+  const categoryNameById = useMemo(() => {
+    return categories.reduce<Map<string, string>>((map, category) => {
+      map.set(category.id, category.name);
+      return map;
+    }, new Map());
+  }, [categories]);
 
-  const answerTypeNameById = (id: string | null) => {
-    if (!id) return "";
-    const match = answerTypes.find((at) => at.id === id);
-    return match?.name ?? "";
-  };
+  const answerTypeNameById = useMemo(() => {
+    return answerTypes.reduce<Map<string, string>>((map, answerType) => {
+      map.set(answerType.id, answerType.name);
+      return map;
+    }, new Map());
+  }, [answerTypes]);
 
   const filteredTemplates = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -37,13 +39,13 @@ export default function AdminForms({ categories, answerTypes, templates }: Props
     return templates.filter((t) => {
       return (
         t.title.toLowerCase().includes(q) ||
-        categoryNameById(t.category_id)?.toLowerCase().includes(q) ||
-        answerTypeNameById(t.answer_type_id)?.toLowerCase().includes(q) ||
+        (categoryNameById.get(t.category_id ?? "") ?? "").toLowerCase().includes(q) ||
+        (answerTypeNameById.get(t.answer_type_id ?? "") ?? "").toLowerCase().includes(q) ||
         (t.answer_types?.type ?? "").toLowerCase().includes(q) ||
         (t.answer_types?.name ?? "").toLowerCase().includes(q)
       );
     });
-  }, [templates, query, categories, answerTypes]);
+  }, [templates, query, categoryNameById, answerTypeNameById]);
 
   const deleteTemplate = async () => {
     if (!pendingDeleteId) return;

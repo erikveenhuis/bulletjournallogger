@@ -1,8 +1,5 @@
-// Service worker version - increment when updating
-const SW_VERSION = "1.0.0";
-
 // Install event - ensure service worker is activated
-self.addEventListener("install", (event) => {
+self.addEventListener("install", () => {
   // Force activation of new service worker immediately
   self.skipWaiting();
 });
@@ -16,10 +13,7 @@ self.addEventListener("activate", (event) => {
       // Clean up old caches if needed (for future cache management)
       caches.keys().then((cacheNames) => {
         return Promise.all(
-          cacheNames.map((cacheName) => {
-            // Add cache cleanup logic here if needed in the future
-            return Promise.resolve();
-          }),
+          cacheNames.map((cacheName) => Promise.resolve(cacheName)),
         );
       }),
     ]),

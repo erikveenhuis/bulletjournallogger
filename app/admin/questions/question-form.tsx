@@ -1,9 +1,21 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { AnswerType, Category, DisplayOption, QuestionTemplate } from "@/lib/types";
 import PreviewSection from "./preview-section";
+import StepListEditor from "@/components/step-list-editor";
+
+const defaultSteps = ["1", "2", "3", "4", "5"];
+
+const normalizeSteps = (steps: string[]) =>
+  steps.map((step) => step.trim()).filter((step) => step.length > 0);
+
+const stepsFromMeta = (meta: Record<string, unknown> | null | undefined) => {
+  const raw = meta?.steps;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((step) => String(step));
+};
 
 type Props = {
   mode: "create" | "edit";
@@ -17,7 +29,18 @@ export default function QuestionForm({ mode, initialData, categories, answerType
   const [title, setTitle] = useState(initialData?.title ?? "");
   const [categoryId, setCategoryId] = useState(initialData?.category_id ?? "");
   const [answerTypeId, setAnswerTypeId] = useState(initialData?.answer_type_id ?? "");
-  const [meta, setMeta] = useState(() => JSON.stringify(initialData?.meta ?? {}));
+  const [unit, setUnit] = useState(() =>
+    typeof initialData?.meta?.unit === "string" ? initialData.meta.unit : "",
+  );
+  const [steps, setSteps] = useState(() => {
+    const initialSteps = stepsFromMeta(initialData?.meta);
+    if (initialSteps.length > 0) return initialSteps;
+    const initialAnswerType = answerTypes.find((at) => at.id === initialData?.answer_type_id);
+    if (initialAnswerType?.type === "single_choice" || initialAnswerType?.type === "multi_choice") {
+      return defaultSteps;
+    }
+    return [];
+  });
   const [isActive, setIsActive] = useState(initialData?.is_active ?? true);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -26,6 +49,12 @@ export default function QuestionForm({ mode, initialData, categories, answerType
     if (!answerTypeId) return [];
     return answerTypes.filter((at) => at.id === answerTypeId);
   }, [answerTypes, answerTypeId]);
+
+  const selectedAnswerType = selectedAnswerTypes[0];
+  const isChoiceType =
+    selectedAnswerType?.type === "single_choice" || selectedAnswerType?.type === "multi_choice";
+  const isNumberType = selectedAnswerType?.type === "number";
+
 
   const displayDefaults = useMemo(() => {
     const selected = selectedAnswerTypes[0];
@@ -50,11 +79,19 @@ export default function QuestionForm({ mode, initialData, categories, answerType
     }
 
     let metaJson: Record<string, unknown> = {};
-    try {
-      metaJson = JSON.parse(meta || "{}");
-    } catch {
-      setMessage("Meta must be valid JSON");
-      return;
+    if (isChoiceType) {
+      const normalized = normalizeSteps(steps);
+      const resolvedSteps = normalized.length > 0 ? normalized : defaultSteps;
+      if (resolvedSteps.length < 2) {
+        setMessage("Provide at least two options for choice questions.");
+        return;
+      }
+      metaJson = { steps: resolvedSteps };
+    } else if (isNumberType) {
+      const trimmed = unit.trim();
+      if (trimmed) {
+        metaJson = { unit: trimmed };
+      }
     }
 
     setSubmitting(true);
@@ -120,7 +157,12 @@ export default function QuestionForm({ mode, initialData, categories, answerType
               <select
                 value={answerTypeId}
                 onChange={(e) => {
-                  setAnswerTypeId(e.target.value);
+                  const nextId = e.target.value;
+                  setAnswerTypeId(nextId);
+                  const nextType = answerTypes.find((at) => at.id === nextId)?.type;
+                  if ((nextType === "single_choice" || nextType === "multi_choice") && steps.length === 0) {
+                    setSteps(defaultSteps);
+                  }
                 }}
                 className="bujo-input"
               >
@@ -152,19 +194,28 @@ export default function QuestionForm({ mode, initialData, categories, answerType
             )}
           </div>
           <div className="space-y-2">
-            <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
-              <span className="font-medium">Meta JSON</span>
-              <textarea
-                placeholder='e.g. {"min":0,"max":10}'
-                value={meta}
-                onChange={(e) => setMeta(e.target.value)}
-                rows={5}
-                className="bujo-input"
+            {isChoiceType && (
+              <StepListEditor
+                steps={steps}
+                onChange={setSteps}
+                label="Choice options"
+                helperText="Add at least two options. Drag to reorder."
               />
-              <span className="text-xs text-[var(--bujo-subtle)]">
-                Per-question settings consumed by the answer type.
-              </span>
-            </label>
+            )}
+            {isNumberType && (
+              <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
+                <span className="font-medium">Unit</span>
+                <input
+                  placeholder="e.g. cups, steps"
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value)}
+                  className="bujo-input"
+                />
+                <span className="text-xs text-[var(--bujo-subtle)]">
+                  Optional label used in Insights.
+                </span>
+              </label>
+            )}
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={submit}

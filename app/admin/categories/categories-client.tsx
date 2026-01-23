@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Category } from "@/lib/types";
 import ConfirmDialog from "@/components/confirm-dialog";
 
@@ -12,7 +12,13 @@ export default function CategoriesClient({ categories }: Props) {
   const [catName, setCatName] = useState("");
   const [catDesc, setCatDesc] = useState("");
   const [message, setMessage] = useState<string | null>(null);
-  const [catEdits, setCatEdits] = useState<Record<string, { name: string; description: string }>>({});
+  const [catEdits, setCatEdits] = useState<Record<string, { name: string; description: string }>>(
+    () =>
+      categories.reduce<Record<string, { name: string; description: string }>>((acc, c) => {
+        acc[c.id] = { name: c.name, description: c.description ?? "" };
+        return acc;
+      }, {}),
+  );
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
@@ -23,14 +29,6 @@ export default function CategoriesClient({ categories }: Props) {
       (c) => c.name.toLowerCase().includes(q) || (c.description?.toLowerCase() ?? "").includes(q),
     );
   }, [categories, query]);
-
-  useEffect(() => {
-    const nextCatEdits: Record<string, { name: string; description: string }> = {};
-    categories.forEach((c) => {
-      nextCatEdits[c.id] = { name: c.name, description: c.description ?? "" };
-    });
-    setCatEdits(nextCatEdits);
-  }, [categories]);
 
   const addCategory = async () => {
     setMessage(null);
@@ -51,10 +49,15 @@ export default function CategoriesClient({ categories }: Props) {
   const updateCategory = async (id: string) => {
     setMessage(null);
     const edit = catEdits[id];
+    const fallback = categories.find((c) => c.id === id);
     const res = await fetch("/api/categories", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, name: edit?.name, description: edit?.description }),
+      body: JSON.stringify({
+        id,
+        name: edit?.name ?? fallback?.name ?? "",
+        description: edit?.description ?? fallback?.description ?? "",
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -127,14 +130,14 @@ export default function CategoriesClient({ categories }: Props) {
                 className="grid gap-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3 md:grid-cols-3"
               >
                 <input
-                  value={catEdits[c.id]?.name ?? ""}
+                  value={catEdits[c.id]?.name ?? c.name ?? ""}
                   onChange={(e) =>
                     setCatEdits((prev) => ({ ...prev, [c.id]: { ...prev[c.id], name: e.target.value } }))
                   }
                   className="bujo-input text-sm"
                 />
                 <input
-                  value={catEdits[c.id]?.description ?? ""}
+                  value={catEdits[c.id]?.description ?? c.description ?? ""}
                   onChange={(e) =>
                     setCatEdits((prev) => ({ ...prev, [c.id]: { ...prev[c.id], description: e.target.value } }))
                   }

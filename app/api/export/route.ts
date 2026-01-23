@@ -38,25 +38,41 @@ export async function GET() {
     bool_value: boolean | null;
     number_value: number | null;
     scale_value: number | null;
-    emoji_value: string | null;
     text_value: string | null;
     prompt_snapshot: string | null;
     category_snapshot: string | null;
   };
 
   const rows = data.map((row) => {
-    const value =
-      row.bool_value ??
-      row.number_value ??
-      row.scale_value ??
-      row.emoji_value ??
-      row.text_value ??
-      "";
+    const type =
+      (row as AnswerRow).answer_types?.type ?? row.question_templates?.answer_types?.type ?? "";
+    let value: string | number | boolean = "";
+    if (type === "multi_choice" && row.text_value) {
+      try {
+        const parsed = JSON.parse(row.text_value);
+        if (Array.isArray(parsed)) {
+          value = parsed.map((entry) => String(entry)).join(", ");
+        } else {
+          value = row.text_value ?? "";
+        }
+      } catch {
+        value = row.text_value ?? "";
+      }
+    } else if (type === "single_choice" || type === "text") {
+      value = row.text_value ?? "";
+    } else {
+      value =
+        row.bool_value ??
+        row.number_value ??
+        row.scale_value ??
+        row.text_value ??
+        "";
+    }
     return [
       (row as AnswerRow).question_date,
       row.question_templates?.title ?? "",
       row.question_templates?.categories?.name ?? "",
-      (row as AnswerRow).answer_types?.type ?? row.question_templates?.answer_types?.type ?? "",
+      type,
       value,
       row.prompt_snapshot ?? "",
       row.category_snapshot ?? "",

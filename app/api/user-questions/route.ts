@@ -32,8 +32,10 @@ function normalizePalette(input: unknown) {
   return result;
 }
 
+type SupabaseClient = Awaited<ReturnType<typeof getEffectiveSupabaseClient>>;
+
 async function fetchTemplate(
-  supabase: any,
+  supabase: SupabaseClient,
   templateId: string,
 ) {
   return supabase
@@ -148,10 +150,13 @@ export async function POST(request: Request) {
     }
   }
 
-  const defaultDisplay = (template.answer_types?.default_display_option as DisplayOption) || "graph";
+  const answerType = Array.isArray(template.answer_types)
+    ? template.answer_types[0]
+    : template.answer_types;
+  const defaultDisplay = (answerType?.default_display_option as DisplayOption) || "graph";
   const allowedDisplays =
-    Array.isArray(template.answer_types?.allowed_display_options) && template.answer_types?.allowed_display_options.length > 0
-      ? template.answer_types.allowed_display_options
+    Array.isArray(answerType?.allowed_display_options) && answerType?.allowed_display_options.length > 0
+      ? answerType.allowed_display_options
       : [defaultDisplay];
 
   if (
@@ -241,10 +246,13 @@ export async function PUT(request: Request) {
 
   const accountTier = await getAccountTier(supabase, user.id);
 
-  const defaultDisplay = (template.answer_types?.default_display_option as DisplayOption) || "graph";
+  const answerType = Array.isArray(template.answer_types)
+    ? template.answer_types[0]
+    : template.answer_types;
+  const defaultDisplay = (answerType?.default_display_option as DisplayOption) || "graph";
   const allowedDisplays =
-    Array.isArray(template.answer_types?.allowed_display_options) && template.answer_types?.allowed_display_options.length > 0
-      ? template.answer_types.allowed_display_options
+    Array.isArray(answerType?.allowed_display_options) && answerType?.allowed_display_options.length > 0
+      ? answerType.allowed_display_options
       : [defaultDisplay];
 
   if (display_option_override !== undefined) {

@@ -27,18 +27,18 @@ body {
   background-image: radial-gradient(var(--bujo-grid) 1px, transparent 0);
   background-size: 22px 22px;
   color: var(--foreground);
-  font-family: "Short Stack", var(--font-geist-sans), "Inter", system-ui,
+  font-family: var(--font-short-stack), var(--font-geist-sans), "Inter", system-ui,
     -apple-system, sans-serif;
   line-height: 1.6;
 }
 
 body.doodle {
-  font-family: "Short Stack", var(--font-geist-sans), "Inter", system-ui,
+  font-family: var(--font-short-stack), var(--font-geist-sans), "Inter", system-ui,
     -apple-system, sans-serif;
 }
 
 .font-semibold {
-  font-family: "Short Stack", var(--font-geist-sans), "Inter", system-ui,
+  font-family: var(--font-short-stack), var(--font-geist-sans), "Inter", system-ui,
     -apple-system, sans-serif;
   font-weight: 700;
 }

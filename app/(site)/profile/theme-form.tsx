@@ -74,7 +74,6 @@ export default function ThemeForm({
   const [chartPalette, setChartPalette] = useState<ChartPalette>(() =>
     mergePalette(paletteOverride ?? ((profile?.chart_palette as ChartPalette | null) ?? null), resolvedDefaultPalette),
   );
-  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const router = useRouter();
 
@@ -165,7 +164,6 @@ export default function ThemeForm({
       chart_style: updates?.chartStyle ?? chartStyle,
     };
 
-    setSaving(true);
     setMessage(null);
     const res = await fetch(saveEndpoint, {
       method: "PUT",
@@ -173,7 +171,6 @@ export default function ThemeForm({
       body: JSON.stringify(payload),
     });
     const data = await res.json();
-    setSaving(false);
     if (!res.ok) {
       setMessage(data.error || "Unable to save theme");
       return;

@@ -28,7 +28,7 @@ Key tables used by the app (names inferred from queries):
 
 - `profiles`: user settings (timezone, reminder_time, push_opt_in, is_admin, chart palette/style).
 - `categories`: question grouping.
-- `answer_types`: answer type definitions (boolean, number, scale, text, emoji, yes_no_list).
+- `answer_types`: answer type definitions (boolean, number, text, single_choice, multi_choice).
 - `question_templates`: canonical question definitions for all users.
 - `user_questions`: per-user selection/order/customization of templates.
 - `answers`: daily answers tied to templates and dates.

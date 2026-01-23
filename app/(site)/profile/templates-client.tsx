@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Category, QuestionTemplate, UserQuestion } from "@/lib/types";
 
@@ -15,16 +15,12 @@ export default function TemplatesClient({
   templates,
   userQuestions,
 }: Props) {
-  const [mounted, setMounted] = useState(false);
+  const [mounted] = useState(() => typeof window !== "undefined");
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
 
   const selectedTemplateIds = new Set(userQuestions.map((u) => u.template_id));
 

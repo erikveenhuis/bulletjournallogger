@@ -49,18 +49,125 @@ export async function POST(request: Request) {
       category_snapshot?: string;
     }>;
   };
+  if (!answers || answers.length === 0) {
+    return NextResponse.json({ success: true });
+  }
 
-  // Separate answers into those to save and those to delete
-  const answersToSave = answers.filter((a) => {
-    // Only save answers that have actual values (not null/undefined/empty)
+  const maxTextLength = 120;
+  const defaultChoiceSteps = ["1", "2", "3", "4", "5"];
+  const templateIds = Array.from(new Set(answers.map((a) => a.template_id)));
+  const templateMetaMap = {} as Record<string, { type?: string; meta?: Record<string, unknown> }>;
+  if (templateIds.length > 0) {
+    const { data: templates, error: templateMetaError } = await supabase
+      .from("question_templates")
+      .select("id, meta, answer_types(type)")
+      .in("id", templateIds);
+    if (templateMetaError) {
+      return NextResponse.json({ error: templateMetaError.message }, { status: 400 });
+    }
+    (templates || []).reduce<Record<string, { type?: string; meta?: Record<string, unknown> }>>(
+    (acc, row) => {
+      if (row?.id) {
+        const answerType = Array.isArray(row.answer_types) ? row.answer_types[0] : row.answer_types;
+        acc[row.id] = {
+          type: answerType?.type ?? undefined,
+          meta: (row.meta as Record<string, unknown> | null) ?? undefined,
+        };
+      }
+      return acc;
+    },
+    templateMetaMap,
+    );
+  }
+
+  const getChoiceSteps = (meta?: Record<string, unknown>) => {
+    const rawSteps = meta?.steps;
+    if (Array.isArray(rawSteps)) {
+      const normalized = rawSteps.map((step) => String(step).trim()).filter((step) => step.length > 0);
+      if (normalized.length >= 2) return normalized;
+    }
+    return defaultChoiceSteps;
+  };
+
+  const normalizeAnswer = (answer: (typeof answers)[number]) => {
+    const templateMeta = templateMetaMap[answer.template_id];
+    const resolvedType = templateMeta?.type ?? answer.type;
+    const steps = resolvedType === "single_choice" || resolvedType === "multi_choice"
+      ? getChoiceSteps(templateMeta?.meta)
+      : [];
+    const allowed = new Set(steps);
+    const rawValue = answer.value;
+    let value: unknown = null;
+
+    switch (resolvedType) {
+      case "boolean":
+        value = rawValue === null || rawValue === undefined ? null : Boolean(rawValue);
+        break;
+      case "number": {
+        const numeric = typeof rawValue === "number" ? rawValue : Number(rawValue);
+        value = Number.isNaN(numeric) ? null : numeric;
+        break;
+      }
+      case "single_choice": {
+        const candidate = Array.isArray(rawValue)
+          ? rawValue[0]
+          : rawValue === null || rawValue === undefined
+            ? null
+            : String(rawValue);
+        if (!candidate) {
+          value = null;
+          break;
+        }
+        const normalized = String(candidate);
+        value = allowed.has(normalized) ? normalized : null;
+        break;
+      }
+      case "multi_choice": {
+        let list: string[] = [];
+        if (Array.isArray(rawValue)) {
+          list = rawValue.map((entry) => String(entry));
+        } else if (typeof rawValue === "string") {
+          try {
+            const parsed = JSON.parse(rawValue);
+            if (Array.isArray(parsed)) {
+              list = parsed.map((entry) => String(entry));
+            } else {
+              list = [rawValue];
+            }
+          } catch {
+            list = [rawValue];
+          }
+        }
+        const filtered = list.filter((entry) => allowed.has(entry));
+        value = filtered;
+        break;
+      }
+      case "text": {
+        const text = rawValue === null || rawValue === undefined ? "" : String(rawValue);
+        const trimmed = text.trim();
+        value = trimmed.length === 0 ? null : trimmed.slice(0, maxTextLength);
+        break;
+      }
+      default: {
+        const text = rawValue === null || rawValue === undefined ? "" : String(rawValue);
+        const trimmed = text.trim();
+        value = trimmed.length === 0 ? null : trimmed;
+        break;
+      }
+    }
+
+    return { ...answer, value, type: resolvedType };
+  };
+
+  const normalizedAnswers = answers.map(normalizeAnswer);
+  const answersToSave = normalizedAnswers.filter((a) => {
     if (a.value === null || a.value === undefined) return false;
     if (typeof a.value === "string" && a.value.trim() === "") return false;
     if (Array.isArray(a.value) && a.value.length === 0) return false;
     return true;
   });
 
-  const answersToDelete = answers.filter((a) => {
-    // Delete answers that are now empty
+  const answersToDelete = normalizedAnswers.filter((a) => {
     if (a.value === null || a.value === undefined) return true;
     if (typeof a.value === "string" && a.value.trim() === "") return true;
     if (Array.isArray(a.value) && a.value.length === 0) return true;
@@ -69,11 +176,6 @@ export async function POST(request: Request) {
 
   // Delete empty answers first
   if (answersToDelete.length > 0) {
-    const deleteConditions = answersToDelete.map((a) => ({
-      user_id: user.id,
-      template_id: a.template_id,
-      question_date,
-    }));
     const { error: deleteError } = await supabase
       .from("answers")
       .delete()
@@ -124,27 +226,16 @@ export async function POST(request: Request) {
       switch (a.type) {
         case "boolean":
           return { ...base, bool_value: !!a.value };
-        case "yes_no_list":
-          // If value is false, store as bool_value: false
-          // If value is true or an array, store JSON array in text_value
-          if (a.value === false) {
-            return { ...base, bool_value: false };
-          }
-          if (Array.isArray(a.value)) {
-            const normalized = a.value.map((val) => String(val));
-            return { ...base, text_value: JSON.stringify(normalized) };
-          }
-          // If value is true but not an array yet, store empty array
-          if (a.value === true) {
-            return { ...base, text_value: JSON.stringify([]) };
-          }
-          return { ...base, text_value: JSON.stringify([]) };
         case "number":
           return { ...base, number_value: Number(a.value) };
-        case "scale":
-          return { ...base, scale_value: Number(a.value) };
-        case "emoji":
-          return { ...base, emoji_value: String(a.value) };
+        case "single_choice":
+          return { ...base, text_value: String(a.value) };
+        case "multi_choice": {
+          const normalized = Array.isArray(a.value) ? a.value.map((val) => String(val)) : [];
+          return { ...base, text_value: JSON.stringify(normalized) };
+        }
+        case "text":
+          return { ...base, text_value: String(a.value) };
         default:
           return { ...base, text_value: String(a.value) };
       }

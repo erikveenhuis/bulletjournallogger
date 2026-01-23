@@ -1,6 +1,9 @@
 import Link from "next/link";
+import { getEffectiveUser } from "@/lib/auth";
 
-export default function Home() {
+export default async function Home() {
+  const { user } = await getEffectiveUser();
+  const primaryHref = user ? "/journal" : "/sign-up";
   return (
     <div className="bujo-card bujo-torn grid gap-10">
       <div className="flex flex-col gap-4">
@@ -19,7 +22,7 @@ export default function Home() {
           </p>
         </div>
         <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:flex-wrap">
-          <Link href="/sign-up" className="bujo-btn">
+          <Link href={primaryHref} className="bujo-btn">
             Get started
           </Link>
           <Link href="/profile" className="bujo-btn-secondary">
@@ -37,7 +40,7 @@ export default function Home() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           {[
             { title: "Smart reminders", desc: "Pick your local time and stay consistent." },
-            { title: "Question types", desc: "Boolean, number, scale, emoji, and text." },
+            { title: "Question types", desc: "Boolean, number, single choice, multiple choice, and text." },
             { title: "Bullet journal export", desc: "CSV for quick coloring sessions." },
           ].map((item) => (
             <div key={item.title} className="bujo-question h-full">

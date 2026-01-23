@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   subscribeToPush,
   saveSubscriptionToServer,
   unsubscribeFromPush,
-  getCurrentSubscription,
   checkPushSupport,
 } from "@/lib/push-subscription";
 
@@ -44,38 +43,38 @@ export default function ProfileForm({
     normalizeToFiveMinutes(profile?.reminder_time || "09:00"),
   );
   const [pushOptIn, setPushOptIn] = useState(!!profile?.push_opt_in);
-  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [blockedNoticeShown, setBlockedNoticeShown] = useState(false);
   const router = useRouter();
 
-  const saveProfile = async (updates?: {
-    timezone?: string;
-    reminderTime?: string;
-    pushOptIn?: boolean;
-  }) => {
-    const payload = {
-      timezone: updates?.timezone ?? timezone,
-      reminder_time: updates?.reminderTime ?? reminderTime,
-      push_opt_in: updates?.pushOptIn ?? pushOptIn,
-    };
+  const saveProfile = useCallback(
+    async (updates?: {
+      timezone?: string;
+      reminderTime?: string;
+      pushOptIn?: boolean;
+    }) => {
+      const payload = {
+        timezone: updates?.timezone ?? timezone,
+        reminder_time: updates?.reminderTime ?? reminderTime,
+        push_opt_in: updates?.pushOptIn ?? pushOptIn,
+      };
 
-    setSaving(true);
-    setMessage(null);
-    const res = await fetch("/api/profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    setSaving(false);
-    if (!res.ok) {
-      setMessage(data.error || "Unable to save profile");
-      return;
-    }
-    setMessage("Saved");
-    router.refresh();
-  };
+      setMessage(null);
+      const res = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.error || "Unable to save profile");
+        return;
+      }
+      setMessage("Saved");
+      router.refresh();
+    },
+    [pushOptIn, reminderTime, router, timezone],
+  );
 
 
   const enablePush = async () => {
@@ -189,7 +188,7 @@ export default function ProfileForm({
     return () => {
       cancelled = true;
     };
-  }, [profile?.push_opt_in]);
+  }, [blockedNoticeShown, profile?.push_opt_in, saveProfile]);
 
   return (
     <section className="bujo-card bujo-torn">

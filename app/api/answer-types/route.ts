@@ -48,7 +48,7 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const { name, description, type, items, meta, is_active } = body;
-  const allowedTypes = ["boolean", "number", "scale", "text", "emoji", "yes_no_list"];
+  const allowedTypes = ["boolean", "number", "text", "single_choice", "multi_choice"];
   if (!type || !allowedTypes.includes(type)) {
     return NextResponse.json({ error: "Type is required and must be one of: " + allowedTypes.join(", ") }, { status: 400 });
   }

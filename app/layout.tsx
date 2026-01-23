@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Shadows_Into_Light } from "next/font/google";
+import { Geist, Geist_Mono, Shadows_Into_Light, Short_Stack } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/header";
 import PushManager from "@/components/push-manager";
@@ -17,6 +17,12 @@ const geistMono = Geist_Mono({
 
 const journalScript = Shadows_Into_Light({
   variable: "--font-bujo-script",
+  subsets: ["latin"],
+  weight: "400",
+});
+
+const shortStack = Short_Stack({
+  variable: "--font-short-stack",
   subsets: ["latin"],
   weight: "400",
 });
@@ -51,10 +57,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Short+Stack&display=swap"
-        />
         {/* iOS PWA Support */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -71,7 +73,7 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${journalScript.variable} doodle antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${journalScript.variable} ${shortStack.variable} doodle antialiased`}
       >
         <PushManager />
         <Header />

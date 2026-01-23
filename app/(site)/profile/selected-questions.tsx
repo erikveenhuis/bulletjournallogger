@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { format, subDays } from "date-fns";
 import type { AnswerType, ChartPalette, ChartStyle, DisplayOption, UserQuestion } from "@/lib/types";
 import { defaultThemeDefaults } from "@/lib/theme-constants";
 import ConfirmDialog from "@/components/confirm-dialog";
 import InsightsChart from "@/app/(site)/insights/insights-chart";
+
+const hexColorPattern = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 type Props = {
   userQuestions: UserQuestion[];
@@ -36,17 +38,11 @@ export default function SelectedQuestions({
   defaultPalette,
   defaultStyle,
 }: Props) {
-  const [mounted, setMounted] = useState(false);
+  const [mounted] = useState(() => typeof window !== "undefined");
   const fallbackPalette = useMemo(
     () => defaultPalette ?? defaultThemeDefaults.chart_palette,
     [defaultPalette],
   );
-  const resolvedStyle: ChartStyle =
-    chartStyle === "brush" || chartStyle === "solid"
-      ? chartStyle
-      : defaultStyle ?? defaultThemeDefaults.chart_style;
-  const isBrush = resolvedStyle === "brush";
-  const isSolid = resolvedStyle === "solid";
   const validUserQuestions = userQuestions
     .filter(
       (u): u is UserQuestion & { template: NonNullable<UserQuestion["template"]> } => !!u.template,
@@ -73,10 +69,6 @@ export default function SelectedQuestions({
     { key: "scaleHigh", label: "Scale high" },
   ];
 
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
 
   const overridesSeed = useMemo(
     () =>
@@ -105,7 +97,7 @@ export default function SelectedQuestions({
       setOverrides(initial);
       overridesRef.current = initial;
     }
-  }, [overridesSeed]);
+  }, [overridesSeed, overrides, validUserQuestions]);
 
   const remove = async () => {
     if (!pendingRemoveId) return;
@@ -212,11 +204,11 @@ export default function SelectedQuestions({
     const meta = answerType.meta || {};
     const minNumber = typeof meta.min === "number" ? meta.min : 0;
     const maxNumber = typeof meta.max === "number" ? meta.max : 100;
-    const minScale = typeof meta.min === "number" ? meta.min : 1;
-    const maxScale = typeof meta.max === "number" ? meta.max : 5;
-    const emojiItems = answerType.items || ["😀", "🙂", "😐", "😞", "😡"];
+    const choiceSteps = Array.isArray(meta.steps)
+      ? meta.steps.map((step) => String(step))
+      : ["1", "2", "3", "4", "5"];
     const textSamples = ["Good", "Great", "Okay", "Fine", "Excellent", "Rough", "Calm"];
-    const listItems = answerType.items || [];
+    const listItems = choiceSteps;
 
     return Array.from({ length: days }).map(() => {
       switch (answerType.type) {
@@ -224,26 +216,19 @@ export default function SelectedQuestions({
           return random() > 0.4;
         case "number":
           return Math.round(minNumber + random() * (maxNumber - minNumber));
-        case "scale":
-          return Math.round(minScale + random() * (maxScale - minScale));
-        case "emoji":
-          return emojiItems[Math.floor(random() * emojiItems.length)];
         case "text":
           return textSamples[Math.floor(random() * textSamples.length)];
-        case "yes_no_list": {
+        case "single_choice":
+          return listItems[Math.floor(random() * listItems.length)];
+        case "multi_choice": {
           if (listItems.length === 0) return [];
-          return listItems.filter((item) => random() > 0.5).slice(0, listItems.length);
+        return listItems.filter(() => random() > 0.5).slice(0, listItems.length);
         }
         default:
           return null;
       }
     });
   };
-
-  const answerTypeSeed = useMemo(
-    () => validUserQuestions.map((u) => u.template.answer_types?.id ?? "").join("|"),
-    [validUserQuestions],
-  );
 
   const demoValuesByTypeId = useMemo(() => {
     const map = new Map<string, DemoValue[]>();
@@ -253,7 +238,7 @@ export default function SelectedQuestions({
       map.set(answerType.id, generateDemoValues(answerType, 7));
     });
     return map;
-  }, [answerTypeSeed]);
+  }, [validUserQuestions]);
 
   const buildDemoAnswersFromValues = (
     answerType: AnswerType,
@@ -261,13 +246,12 @@ export default function SelectedQuestions({
     templateId: string,
     questionTitle: string,
     categoryName?: string | null,
+    templateMeta?: Record<string, unknown> | null,
   ) => {
     const today = new Date();
     const meta = answerType.meta || {};
     const minNumber = typeof meta.min === "number" ? meta.min : 0;
     const maxNumber = typeof meta.max === "number" ? meta.max : 100;
-    const minScale = typeof meta.min === "number" ? meta.min : 1;
-    const maxScale = typeof meta.max === "number" ? meta.max : 5;
 
     const toNumber = (value: DemoValue, fallback: number) => {
       if (typeof value === "number" && !Number.isNaN(value)) return value;
@@ -324,6 +308,7 @@ export default function SelectedQuestions({
         question_templates: {
           id: templateId,
           title: questionTitle,
+          meta: templateMeta ?? null,
           answer_types: {
             type: answerType.type,
             meta: answerType.meta || null,
@@ -338,7 +323,6 @@ export default function SelectedQuestions({
             bool_value: toBoolean(value),
             number_value: null,
             scale_value: null,
-            emoji_value: null,
             text_value: null,
           };
         case "number":
@@ -347,25 +331,6 @@ export default function SelectedQuestions({
             bool_value: null,
             number_value: Math.min(maxNumber, Math.max(minNumber, toNumber(value, minNumber))),
             scale_value: null,
-            emoji_value: null,
-            text_value: null,
-          };
-        case "scale":
-          return {
-            ...baseAnswer,
-            bool_value: null,
-            number_value: null,
-            scale_value: Math.min(maxScale, Math.max(minScale, toNumber(value, minScale))),
-            emoji_value: null,
-            text_value: null,
-          };
-        case "emoji":
-          return {
-            ...baseAnswer,
-            bool_value: null,
-            number_value: null,
-            scale_value: null,
-            emoji_value: toStringValue(value, "🙂"),
             text_value: null,
           };
         case "text":
@@ -374,42 +339,46 @@ export default function SelectedQuestions({
             bool_value: null,
             number_value: null,
             scale_value: null,
-            emoji_value: null,
             text_value: toStringValue(value, "Okay"),
           };
-        case "yes_no_list": {
-          const selectedItems = toStringArray(value);
-          return {
-            ...baseAnswer,
-            bool_value: selectedItems.length > 0,
-            number_value: null,
-            scale_value: null,
-            emoji_value: null,
-            text_value: selectedItems.length > 0 ? JSON.stringify(selectedItems) : null,
-          };
-        }
+      case "single_choice":
+        return {
+          ...baseAnswer,
+          bool_value: null,
+          number_value: null,
+          scale_value: null,
+          text_value: toStringValue(value, "1"),
+        };
+      case "multi_choice": {
+        const selectedItems = toStringArray(value);
+        return {
+          ...baseAnswer,
+          bool_value: null,
+          number_value: null,
+          scale_value: null,
+          text_value: selectedItems.length > 0 ? JSON.stringify(selectedItems) : null,
+        };
+      }
         default:
           return {
             ...baseAnswer,
             bool_value: null,
             number_value: null,
             scale_value: null,
-            emoji_value: null,
             text_value: null,
           };
       }
     });
   };
 
-  const hexColorPattern = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-  const normalizeHexColor = (value?: string | null) => {
+  const normalizeHexColor = useCallback((value?: string | null) => {
     if (!value || typeof value !== "string") return null;
     const trimmed = value.trim();
     if (!hexColorPattern.test(trimmed)) return null;
     const raw = trimmed.slice(1);
     const expanded = raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw;
     return `#${expanded.toLowerCase()}`;
-  };
+  }, []);
 
   const normalizeOverridePalette = (input?: Partial<ChartPalette> | null) => {
     if (!input) return null;
@@ -423,7 +392,8 @@ export default function SelectedQuestions({
     return Object.keys(result).length > 0 ? result : null;
   };
 
-  const sanitizePalette = (input?: Partial<ChartPalette> | null, fallback?: ChartPalette): ChartPalette => {
+  const sanitizePalette = useCallback(
+    (input?: Partial<ChartPalette> | null, fallback?: ChartPalette): ChartPalette => {
     const palette = { ...(fallback ?? fallbackPalette) };
     if (!input) return palette;
     (Object.keys(palette) as Array<keyof ChartPalette>).forEach((key) => {
@@ -433,11 +403,13 @@ export default function SelectedQuestions({
       }
     });
     return palette;
-  };
+    },
+    [fallbackPalette, normalizeHexColor],
+  );
 
   const basePalette = useMemo(
     () => sanitizePalette(chartPalette ?? null, fallbackPalette),
-    [chartPalette, fallbackPalette],
+    [chartPalette, fallbackPalette, sanitizePalette],
   );
 
   const getPaletteForQuestion = (u: UserQuestion & { template: NonNullable<UserQuestion["template"]> }) => {
@@ -648,6 +620,7 @@ export default function SelectedQuestions({
           activeQuestion.template_id,
           activeQuestion.custom_label || activeQuestion.template.title,
           activeQuestion.template.categories?.name ?? null,
+          (activeQuestion.template.meta as Record<string, unknown> | null) ?? null,
         );
         const modalContent = (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-md p-4">

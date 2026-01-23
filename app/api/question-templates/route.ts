@@ -34,6 +34,22 @@ async function getProfileAccess(
   return { isAdmin: !!data?.is_admin, accountTier };
 }
 
+const defaultChoiceSteps = ["1", "2", "3", "4", "5"];
+
+const normalizeSteps = (raw: unknown) => {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((step) => String(step).trim()).filter((step) => step.length > 0);
+};
+
+const resolveChoiceMeta = (meta: Record<string, unknown> | null | undefined) => {
+  const rawSteps = normalizeSteps(meta?.steps);
+  const steps = rawSteps.length > 0 ? rawSteps : defaultChoiceSteps;
+  if (steps.length < 2) {
+    return { error: "Choice questions must have at least two options." };
+  }
+  return { meta: { steps } };
+};
+
 export async function GET(request: Request) {
   const supabase = await createServerSupabaseClient();
   const url = new URL(request.url);
@@ -94,7 +110,7 @@ export async function POST(request: Request) {
   // Validate that the answer_type_id exists
   const { data: answerType, error: answerTypeError } = await supabase
     .from("answer_types")
-    .select("id, is_active")
+    .select("id, is_active, type")
     .eq("id", answer_type_id)
     .maybeSingle();
 
@@ -109,10 +125,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Answer type is inactive." }, { status: 400 });
   }
 
+  const baseMeta = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
+  let metaPayload: Record<string, unknown> = baseMeta;
+  if (answerType.type === "single_choice" || answerType.type === "multi_choice") {
+    const resolved = resolveChoiceMeta(baseMeta);
+    if ("error" in resolved) {
+      return NextResponse.json({ error: resolved.error }, { status: 400 });
+    }
+    metaPayload = resolved.meta;
+  } else if (answerType.type === "number") {
+    const unit = typeof baseMeta.unit === "string" ? baseMeta.unit.trim() : "";
+    metaPayload = unit ? { unit } : {};
+  } else {
+    metaPayload = {};
+  }
+
   const { error } = await supabase.from("question_templates").insert({
     title,
     category_id,
-    meta,
+    meta: metaPayload,
     is_active,
     answer_type_id,
     created_by: user.id,
@@ -152,7 +183,7 @@ export async function PUT(request: Request) {
 
   const { data: existingTemplate, error: fetchError } = await supabase
     .from("question_templates")
-    .select("answer_type_id, created_by")
+    .select("answer_type_id, created_by, answer_types(type)")
     .eq("id", id)
     .maybeSingle();
 
@@ -166,16 +197,40 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const existingAnswerType = Array.isArray(existingTemplate.answer_types)
+    ? existingTemplate.answer_types[0]
+    : existingTemplate.answer_types;
+
   const updates: Record<string, unknown> = {};
   if (title !== undefined) updates.title = title;
   if (category_id !== undefined) updates.category_id = category_id;
-  if (meta !== undefined) updates.meta = meta;
+  if (meta !== undefined) {
+    const baseMeta = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
+    const effectiveType =
+      answer_type_id !== undefined
+        ? undefined
+        : (existingAnswerType?.type as string | undefined);
+    if (effectiveType === "single_choice" || effectiveType === "multi_choice") {
+      const resolved = resolveChoiceMeta(baseMeta);
+      if ("error" in resolved) {
+        return NextResponse.json({ error: resolved.error }, { status: 400 });
+      }
+      updates.meta = resolved.meta;
+    } else if (effectiveType === "number") {
+      const unit = typeof baseMeta.unit === "string" ? baseMeta.unit.trim() : "";
+      updates.meta = unit ? { unit } : {};
+    } else if (effectiveType) {
+      updates.meta = {};
+    } else {
+      updates.meta = baseMeta;
+    }
+  }
   if (is_active !== undefined) updates.is_active = is_active;
   if (answer_type_id !== undefined) {
     // Validate that the answer_type_id exists
     const { data: answerType, error: answerTypeError } = await supabase
       .from("answer_types")
-      .select("id, is_active")
+      .select("id, is_active, type")
       .eq("id", answer_type_id)
       .maybeSingle();
 
@@ -191,6 +246,24 @@ export async function PUT(request: Request) {
     }
 
     updates.answer_type_id = answer_type_id;
+
+    if (meta !== undefined) {
+      const baseMeta = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
+      if (answerType.type === "single_choice" || answerType.type === "multi_choice") {
+        const resolved = resolveChoiceMeta(baseMeta);
+        if ("error" in resolved) {
+          return NextResponse.json({ error: resolved.error }, { status: 400 });
+        }
+        updates.meta = resolved.meta;
+      } else if (answerType.type === "number") {
+        const unit = typeof baseMeta.unit === "string" ? baseMeta.unit.trim() : "";
+        updates.meta = unit ? { unit } : {};
+      } else {
+        updates.meta = {};
+      }
+    } else if (answerType.type === "single_choice" || answerType.type === "multi_choice") {
+      updates.meta = { steps: defaultChoiceSteps };
+    }
   }
 
   if (Object.keys(updates).length === 0) {

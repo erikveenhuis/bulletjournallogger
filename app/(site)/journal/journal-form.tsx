@@ -32,7 +32,6 @@ type AnswerRow = {
   bool_value: boolean | null;
   number_value: number | null;
   scale_value: number | null;
-  emoji_value: string | null;
   text_value: string | null;
   answer_types?:
     | {
@@ -113,8 +112,19 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
     uq.template.answer_types;
 
   const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const defaultChoiceSteps = ["1", "2", "3", "4", "5"];
+  const maxTextLength = 120;
   const selectedDateObj = selectedDate ? parseISO(selectedDate) : todayDate;
   const canGoNextMonth = !isAfter(startOfMonth(addMonths(currentMonth, 1)), todayDate);
+
+  const getChoiceSteps = (meta?: Record<string, unknown> | null) => {
+    const rawSteps = meta?.steps;
+    if (Array.isArray(rawSteps)) {
+      const normalized = rawSteps.map((step) => String(step).trim()).filter((step) => step.length > 0);
+      if (normalized.length >= 2) return normalized;
+    }
+    return defaultChoiceSteps;
+  };
 
   const setValue = (id: string, value: AnswerValue) => {
     setHasUserEdited(true);
@@ -124,7 +134,7 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
   const isValueAnswered = (value: AnswerValue) => {
     if (value === null || value === undefined) return false;
     if (typeof value === "string") return value.trim().length > 0;
-    if (Array.isArray(value)) return true; // Array means "Yes" was selected
+    if (Array.isArray(value)) return value.length > 0;
     return true; // booleans and numbers (including 0 / false) count as answered
   };
 
@@ -158,49 +168,41 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
         const map: Record<string, AnswerValue> = {};
         data.forEach((ans) => {
           if (!ans.template_id) return;
-          // Check if this is a yes_no_list type by looking at the template from the answer
+          // Check for multi-choice entries that are stored as JSON arrays
           const answerType =
             ans.answer_types?.type ??
             ans.question_templates?.answer_types?.type;
-          if (answerType === "yes_no_list") {
-            const items =
-              ans.answer_types?.items ??
-              ans.question_templates?.answer_types?.items ??
-              [];
-            // For yes_no_list: if bool_value is false, it's "No"
-            // If text_value exists, parse it as JSON array (it's "Yes" with selections)
-            if (ans.bool_value === false) {
-              map[ans.template_id] = false;
+          if (answerType === "multi_choice") {
+            if (ans.text_value === null || ans.text_value === undefined) {
+              map[ans.template_id] = null;
               return;
             }
-            if (ans.bool_value === true && (ans.text_value === null || ans.text_value === undefined)) {
-              map[ans.template_id] = [];
-              return;
-            }
-            if (ans.text_value !== null && ans.text_value !== undefined) {
-              try {
-                const parsed = JSON.parse(ans.text_value);
-                if (Array.isArray(parsed)) {
-                  const hasBooleans = parsed.some((val) => typeof val === "boolean");
-                  if (hasBooleans && items.length > 0) {
-                    const selected = parsed
-                      .map((val, index) => (val ? items[index] : null))
-                      .filter((val): val is string => typeof val === "string");
-                    map[ans.template_id] = selected;
-                    return;
-                  }
-                  map[ans.template_id] = parsed
-                    .map((val) => String(val))
-                    .filter((val) => val.length > 0);
-                  return;
-                }
-              } catch {
-                // If parsing fails, treat as empty array (Yes with no selections)
-                map[ans.template_id] = [];
+            try {
+              const parsed = JSON.parse(ans.text_value);
+              if (Array.isArray(parsed)) {
+                map[ans.template_id] = parsed.map((val) => String(val)).filter((val) => val.length > 0);
                 return;
               }
+            } catch {
+              map[ans.template_id] = null;
+              return;
             }
-            return;
+          }
+          if (answerType === "single_choice") {
+            if (ans.text_value !== null && ans.text_value !== undefined) {
+              map[ans.template_id] = ans.text_value;
+              return;
+            }
+            if (ans.scale_value !== null && ans.scale_value !== undefined) {
+              map[ans.template_id] = String(ans.scale_value);
+              return;
+            }
+          }
+          if (answerType === "text") {
+            if (ans.text_value !== null && ans.text_value !== undefined) {
+              map[ans.template_id] = ans.text_value;
+              return;
+            }
           }
           if (ans.bool_value !== null && ans.bool_value !== undefined) {
             map[ans.template_id] = ans.bool_value;
@@ -214,10 +216,6 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
             map[ans.template_id] = ans.scale_value;
             return;
           }
-          if (ans.emoji_value !== null && ans.emoji_value !== undefined) {
-            map[ans.template_id] = ans.emoji_value;
-            return;
-          }
           if (ans.text_value !== null && ans.text_value !== undefined) {
             map[ans.template_id] = ans.text_value;
           }
@@ -225,7 +223,7 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
         setValues(map);
         setLastSavedValues(map);
         setHasUserEdited(false);
-      } catch (error) {
+      } catch {
         setError("Could not load saved answers for that date.");
         setValues({});
         setLastSavedValues({});
@@ -271,11 +269,11 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
           }
 
           // Only count this as answered if it has a meaningful value
-          const hasValue = ans.bool_value !== null && ans.bool_value !== undefined ||
-                           ans.number_value !== null && ans.number_value !== undefined ||
-                           ans.scale_value !== null && ans.scale_value !== undefined ||
-                           (ans.emoji_value !== null && ans.emoji_value !== undefined && ans.emoji_value.trim() !== "") ||
-                           (ans.text_value !== null && ans.text_value !== undefined && ans.text_value.trim() !== "");
+          const hasValue =
+            (ans.bool_value !== null && ans.bool_value !== undefined) ||
+            (ans.number_value !== null && ans.number_value !== undefined) ||
+            (ans.scale_value !== null && ans.scale_value !== undefined) ||
+            (ans.text_value !== null && ans.text_value !== undefined && ans.text_value.trim() !== "");
 
 
           if (hasValue) {
@@ -288,7 +286,7 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
           statusMap[dateKey] = templateSet.size >= validTemplateIds.length ? "full" : "partial";
         });
         setAnsweredDates(statusMap);
-      } catch (error) {
+      } catch {
         setError("Could not load calendar status.");
         setAnsweredDates({});
       } finally {
@@ -371,8 +369,9 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
       const status = computeDayStatus(valuesToUse);
       setAnsweredDates((prev) => {
         if (!status) {
-          const { [dateToSave]: _, ...rest } = prev;
-          return rest;
+          const next = { ...prev };
+          delete next[dateToSave];
+          return next;
         }
         return { ...prev, [dateToSave]: status };
       });
@@ -408,8 +407,9 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
 
         // Update calendar status
         setAnsweredDates((prev) => {
-          const { [selectedDate]: _, ...rest } = prev;
-          return rest;
+          const next = { ...prev };
+          delete next[selectedDate];
+          return next;
         });
       } catch (error) {
         setError(error instanceof Error ? error.message : "Failed to clear answers");
@@ -456,8 +456,9 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
         const newDayStatus = computeDayStatus(newValues);
         setAnsweredDates((prev) => {
           if (!newDayStatus) {
-            const { [selectedDate]: _, ...rest } = prev;
-            return rest;
+            const next = { ...prev };
+            delete next[selectedDate];
+            return next;
           }
           return { ...prev, [selectedDate]: newDayStatus };
         });
@@ -712,7 +713,7 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
                       checked={values[uq.template_id] === true}
                       onChange={() => setValue(uq.template_id, true)}
                     />
-                    Yes
+                    <span>&nbsp;Yes</span>
                   </label>
                   <label className="flex items-center gap-2">
                     <input
@@ -722,7 +723,7 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
                       checked={values[uq.template_id] === false}
                       onChange={() => setValue(uq.template_id, false)}
                     />
-                    No
+                    <span>&nbsp;No</span>
                   </label>
                 </div>
               )}
@@ -737,132 +738,80 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
                   }}
                 />
               )}
-              {answerType?.type === "scale" && (
-                <div className="flex flex-wrap items-center gap-3">
+              {(answerType?.type === "single_choice" || answerType?.type === "multi_choice") && (() => {
+                const steps = getChoiceSteps(uq.template.meta as Record<string, unknown> | null);
+                const currentValue = values[uq.template_id];
+                const selectedItems = Array.isArray(currentValue) ? currentValue : [];
+                const selectedValue = typeof currentValue === "string" ? currentValue : "";
+                if (answerType?.type === "single_choice") {
+                  return (
+                    <div className="flex flex-wrap items-center gap-4 text-sm text-gray-800">
+                      {steps.map((step) => (
+                        <label key={step} className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name={`single-${uq.template_id}`}
+                            className="h-4 w-4 accent-[#7c5cff]"
+                            checked={selectedValue === step}
+                            onChange={() => setValue(uq.template_id, step)}
+                          />
+                          <span>&nbsp;{step}</span>
+                        </label>
+                      ))}
+                    </div>
+                  );
+                }
+                return (
+                  <div className="flex w-full flex-wrap gap-x-6 gap-y-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3">
+                    {steps.map((step) => (
+                      <label
+                        key={step}
+                        className="inline-flex min-w-[220px] flex-1 items-start gap-4 pr-4 text-sm text-gray-800"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedItems.includes(step)}
+                          onChange={(e) => {
+                            const next = new Set(selectedItems);
+                            if (e.target.checked) {
+                              next.add(step);
+                            } else {
+                              next.delete(step);
+                            }
+                            setValue(uq.template_id, Array.from(next));
+                          }}
+                          className="h-4 w-4 accent-[#7c5cff]"
+                        />
+                        <span className="leading-snug break-words">&nbsp;{step}</span>
+                      </label>
+                    ))}
+                  </div>
+                );
+              })()}
+              {answerType?.type === "text" && (
+                <div className="space-y-2">
                   {(() => {
-                    const meta = (answerType?.meta as Record<string, unknown>) || {};
-                    const min = typeof meta.min === "number" ? meta.min : 1;
-                    const max = typeof meta.max === "number" ? meta.max : 5;
-                    const currentValue =
-                      typeof values[uq.template_id] === "number" ? Number(values[uq.template_id]) : min;
+                    const rawValue =
+                      typeof values[uq.template_id] === "string" ? String(values[uq.template_id]) : "";
+                    const safeValue = rawValue.slice(0, maxTextLength);
+                    const remaining = maxTextLength - safeValue.length;
                     return (
                       <>
-                        <input
-                          type="range"
-                          min={min}
-                          max={max}
-                          value={currentValue}
-                          onChange={(e) => setValue(uq.template_id, Number(e.target.value))}
-                          className="bujo-range w-full"
+                        <textarea
+                          className="bujo-input"
+                          rows={3}
+                          maxLength={maxTextLength}
+                          value={safeValue}
+                          onChange={(e) => setValue(uq.template_id, e.target.value.slice(0, maxTextLength))}
                         />
-                        <span className="text-sm font-semibold text-gray-800">
-                          {currentValue}
-                        </span>
+                        <p className="text-xs text-[var(--bujo-subtle)]">
+                          {remaining} characters left
+                        </p>
                       </>
                     );
                   })()}
                 </div>
               )}
-              {answerType?.type === "emoji" && (
-                <select
-                  className="bujo-input"
-                  value={typeof values[uq.template_id] === "string" ? String(values[uq.template_id]) : ""}
-                  onChange={(e) => setValue(uq.template_id, e.target.value)}
-                >
-                  <option value="" disabled>
-                    Select
-                  </option>
-                  {(() => {
-                    const items = answerType?.items;
-                    const meta = (answerType?.meta as Record<string, unknown>) || {};
-                    const emojiSetRaw = (meta as Record<string, unknown>)["emoji_set"];
-                    const emojiSet = Array.isArray(emojiSetRaw)
-                      ? emojiSetRaw.map((e) => String(e))
-                      : null;
-                    const options = emojiSet ?? (items && items.length > 0 ? items : ["😀", "🙂", "😐", "😞", "😡"]);
-                    return options.map((emoji) => (
-                      <option key={emoji} value={emoji}>
-                        {emoji}
-                      </option>
-                    ));
-                  })()}
-                </select>
-              )}
-              {answerType?.type === "text" && (
-                <textarea
-                  className="bujo-input"
-                  rows={3}
-                  value={typeof values[uq.template_id] === "string" ? String(values[uq.template_id]) : ""}
-                  onChange={(e) => setValue(uq.template_id, e.target.value)}
-                />
-              )}
-              {answerType?.type === "yes_no_list" && (() => {
-                if (!answerType) {
-                  return (
-                    <p className="text-sm text-red-600">
-                      Answer type not configured. Please contact an admin.
-                    </p>
-                  );
-                }
-                const items = Array.isArray(answerType.items) ? answerType.items : [];
-                const currentValue = values[uq.template_id];
-                const selectedItems = Array.isArray(currentValue) ? currentValue : [];
-                const isYes = Array.isArray(currentValue);
-                const isNo = currentValue === false;
-
-                return (
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-4 text-sm text-gray-800">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name={`yesno-${uq.template_id}`}
-                          className="h-4 w-4 accent-[#7c5cff]"
-                          checked={isYes}
-                          onChange={() => {
-                            // Yes selected with no items checked yet
-                            setValue(uq.template_id, []);
-                          }}
-                        />
-                        Yes
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name={`yesno-${uq.template_id}`}
-                          className="h-4 w-4 accent-[#7c5cff]"
-                          checked={isNo}
-                          onChange={() => setValue(uq.template_id, false)}
-                        />
-                        No
-                      </label>
-                    </div>
-                    {isYes && (
-                      <div className="space-y-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3">
-                        {items.map((item, index) => (
-                          <label key={index} className="flex items-center gap-2 text-sm text-gray-800">
-                            <input
-                              type="checkbox"
-                              checked={selectedItems.includes(item)}
-                              onChange={(e) => {
-                                const next = new Set(selectedItems);
-                                if (e.target.checked) {
-                                  next.add(item);
-                                } else {
-                                  next.delete(item);
-                                }
-                                setValue(uq.template_id, Array.from(next));
-                              }}
-                              className="h-4 w-4 accent-[#7c5cff]"
-                            />
-                            {item}
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
             </div>
           );
         })}
@@ -925,7 +874,7 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
                           disabled
                           className="h-4 w-4 accent-[#7c5cff]"
                         />
-                        Yes
+                        <span>&nbsp;Yes</span>
                       </label>
                       <label className="flex items-center gap-2">
                         <input
@@ -933,7 +882,7 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
                           disabled
                           className="h-4 w-4 accent-[#7c5cff]"
                         />
-                        No
+                        <span>&nbsp;No</span>
                       </label>
                     </div>
                   )}
@@ -947,30 +896,34 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
                       readOnly
                     />
                   )}
-                  {answerType?.type === "scale" && (() => {
-                    const meta = (answerType?.meta as Record<string, unknown>) || {};
-                    const min = typeof meta.min === "number" ? meta.min : 1;
-                    const max = typeof meta.max === "number" ? meta.max : 5;
-                    const mid = Math.round((min + max) / 2);
+                  {(answerType?.type === "single_choice" || answerType?.type === "multi_choice") && (() => {
+                    const steps = getChoiceSteps(uq.template.meta as Record<string, unknown> | null);
+                    if (answerType?.type === "single_choice") {
+                      return (
+                        <div className="flex flex-wrap items-center gap-3 text-sm text-gray-800">
+                          {steps.map((step) => (
+                            <label key={step} className="flex items-center gap-2">
+                              <input type="radio" disabled className="h-4 w-4 accent-[#7c5cff]" />
+                              <span>&nbsp;{step}</span>
+                            </label>
+                          ))}
+                        </div>
+                      );
+                    }
                     return (
-                      <div className="flex flex-wrap items-center gap-3">
-                        <input
-                          type="range"
-                          min={min}
-                          max={max}
-                          value={mid}
-                          disabled
-                          className="bujo-range w-full"
-                        />
-                        <span className="text-sm font-semibold text-gray-800">{mid}</span>
+                      <div className="flex w-full flex-wrap gap-x-6 gap-y-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3">
+                        {steps.map((step) => (
+                          <label
+                            key={step}
+                            className="inline-flex min-w-[220px] flex-1 items-start gap-4 pr-4 text-sm text-gray-800"
+                          >
+                            <input type="checkbox" disabled className="h-4 w-4 accent-[#7c5cff]" />
+                            <span className="leading-snug break-words">&nbsp;{step}</span>
+                          </label>
+                        ))}
                       </div>
                     );
                   })()}
-                  {answerType?.type === "emoji" && (
-                    <select className="bujo-input" disabled value="">
-                      <option value="">Upgrade to answer</option>
-                    </select>
-                  )}
                   {answerType?.type === "text" && (
                     <textarea
                       className="bujo-input"
@@ -980,31 +933,6 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
                       placeholder="Upgrade to answer"
                       readOnly
                     />
-                  )}
-                  {answerType?.type === "yes_no_list" && (
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center gap-4 text-sm text-gray-800">
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            disabled
-                            className="h-4 w-4 accent-[#7c5cff]"
-                          />
-                          Yes
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            disabled
-                            className="h-4 w-4 accent-[#7c5cff]"
-                          />
-                          No
-                        </label>
-                      </div>
-                      <div className="space-y-2 rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] p-3">
-                        <p className="text-sm text-gray-600">Upgrade to select items.</p>
-                      </div>
-                    </div>
                   )}
                 </div>
               );

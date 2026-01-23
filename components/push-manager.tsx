@@ -35,7 +35,7 @@ export default function PushManager() {
             const profile = await profileResponse.json();
             userHasPushEnabled = profile?.push_opt_in === true;
           }
-        } catch (error) {
+        } catch {
           // If profile check fails, continue anyway - might be unauthenticated user
           // In that case, ensureSubscriptionActive will handle it gracefully
         }

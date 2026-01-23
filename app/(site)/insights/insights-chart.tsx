@@ -30,7 +30,6 @@ type AnswerRow = {
   bool_value: boolean | null;
   number_value: number | null;
   scale_value: number | null;
-  emoji_value: string | null;
   text_value: string | null;
   created_at: string;
   updated_at: string;
@@ -38,6 +37,7 @@ type AnswerRow = {
     | {
         id?: string;
         title?: string;
+        meta?: Record<string, unknown> | null;
         answer_types?: {
           type?: string | null;
           meta?: Record<string, unknown> | null;
@@ -53,12 +53,11 @@ type QuestionSeries = {
   promptSnapshot?: string | null;
   categorySnapshot?: string | null;
   label: string;
-  type: "scale" | "number" | "boolean" | "emoji" | "other";
+  type: "number" | "boolean" | "text" | "single_choice" | "multi_choice" | "other";
   typeLabel: string;
   unit?: string;
-  scaleRange?: { min: number; max: number };
   points: Array<{ date: string; value: number }>;
-  emojiPoints?: Array<{ date: string; value: string }>;
+  textPoints?: Array<{ date: string; value: string }>;
   palette?: ChartPalette;
   defaultDisplayOption?: DisplayOption;
 };
@@ -151,47 +150,55 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
   return Object.values(
     answers.reduce<Record<string, QuestionSeries>>((acc, row) => {
       const override = row.template_id ? overrides?.get(row.template_id) : undefined;
-      const meta =
+      const templateMeta = (row.question_templates?.meta as Record<string, unknown> | null) || null;
+      const answerTypeMeta =
         ((row.question_templates?.answer_types?.meta as Record<string, unknown> | null) || null);
-      const metaUnit = meta?.["unit"];
-      const metaMin = meta?.["min"];
-      const metaMax = meta?.["max"];
+      const metaUnit = templateMeta?.["unit"] ?? answerTypeMeta?.["unit"];
       const unit = typeof metaUnit === "string" ? metaUnit : undefined;
       const defaultDisplay = normalizeDisplayOption(
         row.question_templates?.answer_types?.default_display_option,
       );
-      const scaleMinValue = typeof metaMin === "number" ? metaMin : 1;
-      const scaleMaxValue =
-        typeof metaMax === "number" ? metaMax : typeof metaMin === "number" ? metaMin + 4 : 5;
-      const scaleRange =
-        typeof metaMin === "number" || typeof metaMax === "number"
-          ? scaleMaxValue > scaleMinValue
-            ? { min: scaleMinValue, max: scaleMaxValue }
-            : { min: scaleMinValue, max: scaleMinValue + 4 }
-          : { min: 1, max: 5 };
+      const rawType = row.question_templates?.answer_types?.type as QuestionSeries["type"] | undefined;
       const type =
-        ((row.question_templates?.answer_types?.type as QuestionSeries["type"])) ||
-        "other";
+        rawType === "boolean" ||
+        rawType === "number" ||
+        rawType === "text" ||
+        rawType === "single_choice" ||
+        rawType === "multi_choice"
+          ? rawType
+          : "other";
       const templateId = row.template_id || undefined;
       const palette = (override?.color_palette as ChartPalette | undefined) || undefined;
-      const emojiValue = type === "emoji" ? row.emoji_value : null;
+      const textValue = (() => {
+        if (type === "text" || type === "single_choice") {
+          return row.text_value ?? null;
+        }
+        if (type === "multi_choice") {
+          if (!row.text_value) return null;
+          try {
+            const parsed = JSON.parse(row.text_value);
+            if (Array.isArray(parsed)) {
+              return parsed.map((entry) => String(entry)).join(", ");
+            }
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      })();
       const value =
-        type === "emoji"
-          ? null
-          : type === "boolean"
+        type === "boolean"
           ? row.bool_value === null || row.bool_value === undefined
             ? null
             : row.bool_value
               ? 1
               : 0
           : type === "number"
-            ? row.number_value
-            : type === "scale"
-              ? row.scale_value
-              : row.scale_value ?? row.number_value ?? (row.bool_value === null || row.bool_value === undefined ? null : row.bool_value ? 1 : 0);
+            ? row.number_value ?? row.scale_value
+            : null;
 
-      if (type === "emoji") {
-        if (!emojiValue) return acc;
+      if (type === "text" || type === "single_choice" || type === "multi_choice") {
+        if (!textValue || textValue.trim().length === 0) return acc;
       } else if (value === null || value === undefined) {
         return acc;
       }
@@ -199,15 +206,17 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
       const id = row.template_id || row.prompt_snapshot || "unknown-question";
       const label = row.prompt_snapshot || row.question_templates?.title || "Untitled question";
       const typeLabel =
-        type === "scale"
-          ? "Scale"
-          : type === "number"
-            ? "Number"
-            : type === "boolean"
-              ? "Yes / No"
-              : type === "emoji"
-                ? "Emoji"
-              : "Value";
+        type === "number"
+          ? "Number"
+          : type === "boolean"
+            ? "Yes / No"
+            : type === "text"
+              ? "Text"
+              : type === "single_choice"
+                ? "Single choice"
+                : type === "multi_choice"
+                  ? "Multiple choice"
+                  : "Value";
 
       if (!acc[id]) {
         acc[id] = {
@@ -219,18 +228,21 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
           type,
           typeLabel,
           unit,
-          scaleRange: type === "scale" ? scaleRange : undefined,
           points: [],
-          emojiPoints: type === "emoji" ? [] : undefined,
+          textPoints:
+            type === "text" || type === "single_choice" || type === "multi_choice"
+              ? []
+              : undefined,
           palette,
           defaultDisplayOption: defaultDisplay ?? undefined,
         };
       } else if (palette && !acc[id].palette) {
         acc[id].palette = palette;
       }
-      if (type === "emoji" && emojiValue) {
-        acc[id].emojiPoints?.push({ date: row.question_date, value: emojiValue });
-        acc[id].points.push({ date: row.question_date, value: 1 });
+      if (type === "text" || type === "single_choice" || type === "multi_choice") {
+        if (textValue) {
+          acc[id].textPoints?.push({ date: row.question_date, value: textValue });
+        }
       } else {
         acc[id].points.push({ date: row.question_date, value: Number(value) });
       }
@@ -239,6 +251,7 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
   ).map((series) => ({
     ...series,
     points: series.points.sort((a, b) => a.date.localeCompare(b.date)),
+    textPoints: series.textPoints?.sort((a, b) => a.date.localeCompare(b.date)),
   }));
 }
 
@@ -260,15 +273,12 @@ function buildDailyAverages(series: QuestionSeries) {
   return entries;
 }
 
-function buildEmojiDaily(series: QuestionSeries) {
-  if (!series.emojiPoints || series.emojiPoints.length === 0) return [];
-  const map = series.emojiPoints.reduce<Record<string, string>>((acc, point) => {
+function buildTextMap(series: QuestionSeries) {
+  if (!series.textPoints || series.textPoints.length === 0) return {};
+  return series.textPoints.reduce<Record<string, string>>((acc, point) => {
     acc[point.date] = point.value;
     return acc;
   }, {});
-  return Object.entries(map)
-    .map(([date, value]) => ({ date, value }))
-    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function colorForValue(
@@ -277,24 +287,9 @@ function colorForValue(
   maxValue: number,
   palette: ChartPalette,
   scaleColors: ScaleColors,
-  scaleRange?: QuestionSeries["scaleRange"],
 ) {
-  if (type === "emoji") {
-    return toRgba(palette.accentSoft, 0.18, "#f3f4f6");
-  }
   if (type === "boolean") {
     return value >= 1 ? palette.booleanYes : palette.booleanNo;
-  }
-  if (type === "scale") {
-    const min = scaleRange?.min ?? 1;
-    const max = scaleRange?.max ?? Math.max(min + 4, maxValue || min + 4);
-    const range = Math.max(1, max - min);
-    const normalized = Math.min(1, Math.max(0, (value - min) / range));
-    if (normalized >= 0.8) return scaleColors.veryHigh;
-    if (normalized >= 0.6) return scaleColors.high;
-    if (normalized >= 0.4) return scaleColors.mid;
-    if (normalized >= 0.2) return scaleColors.low;
-    return scaleColors.veryLow;
   }
   if (type === "number") {
     if (maxValue <= 0) return "#e5e7eb";
@@ -319,11 +314,9 @@ function upsertPoint(points: Array<{ date: string; value: number }>, date: strin
 
 function LegendKey({
   type,
-  scaleColors,
   palette,
 }: {
   type: QuestionSeries["type"];
-  scaleColors: ScaleColors;
   palette: ChartPalette;
 }) {
   if (type === "boolean") {
@@ -336,32 +329,6 @@ function LegendKey({
         <span className="flex items-center gap-1">
           <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: palette.booleanNo }} />
           No
-        </span>
-      </div>
-    );
-  }
-  if (type === "scale") {
-    return (
-      <div className="mt-2 flex items-center gap-3 text-xs text-gray-700">
-        <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: scaleColors.veryLow }} />
-          Very low
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: scaleColors.low }} />
-          Low
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: scaleColors.mid }} />
-          Mid
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: scaleColors.high }} />
-          High
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: scaleColors.veryHigh }} />
-          Very high
         </span>
       </div>
     );
@@ -387,21 +354,19 @@ function QuestionCalendar({
   const calendarStart = startOfWeek(subWeeks(calendarEnd, 5), { weekStartsOn: 0 });
   const isBrush = chartStyle === "brush";
   const isSolid = chartStyle === "solid";
-  const isEditable = series.type === "boolean" || series.type === "number" || series.type === "scale";
+  const isEditable = series.type === "boolean" || series.type === "number";
+  const isTextType =
+    series.type === "text" || series.type === "single_choice" || series.type === "multi_choice";
+  const [activeTextDay, setActiveTextDay] = useState<string | null>(null);
 
   const daily = buildDailyAverages(series);
-  const emojiDaily = series.type === "emoji" ? buildEmojiDaily(series) : [];
   const valueMap = daily.reduce<Record<string, number>>((map, d) => {
     map[d.date] = d.value;
     return map;
   }, {});
-  const emojiMap = emojiDaily.reduce<Record<string, string>>((map, d) => {
-    map[d.date] = d.value;
-    return map;
-  }, {});
+  const textMap = buildTextMap(series);
   const observedMax = daily.reduce((m, d) => Math.max(m, d.value), 0);
-  const maxValue =
-    series.type === "scale" ? series.scaleRange?.max ?? Math.max(observedMax, 0) : observedMax;
+  const maxValue = series.type === "boolean" ? 1 : observedMax;
 
   const days: Date[] = [];
   let cursor = calendarStart;
@@ -426,14 +391,14 @@ function QuestionCalendar({
           {days.map((day) => {
             const dayStr = format(day, "yyyy-MM-dd");
             const value = valueMap[dayStr];
-            const emojiValue = emojiMap[dayStr];
-            const hasValue = series.type === "emoji" ? emojiValue !== undefined : value !== undefined;
+            const textValue = textMap[dayStr];
+            const hasValue = isTextType ? textValue !== undefined : value !== undefined;
             const isFuture = day > today;
             const bg =
               hasValue
-                ? series.type === "emoji"
-                  ? toRgba(palette.accentSoft, 0.18, "#f3f4f6")
-                  : colorForValue(value, series.type, maxValue, palette, scaleColors, series.scaleRange)
+                ? isTextType
+                  ? toRgba(palette.accentSoft, 0.22, "#f3f4f6")
+                  : colorForValue(value ?? 0, series.type, maxValue, palette, scaleColors)
                 : "#f3f4f6";
             const brushLayer =
               !isFuture && isBrush && hasValue
@@ -443,14 +408,15 @@ function QuestionCalendar({
               !isFuture && isSolid && hasValue
                 ? bg
                 : undefined;
-            const shouldUseGradient = !isFuture && !isBrush && !isSolid && hasValue && series.type !== "boolean";
+            const shouldUseGradient =
+              !isFuture && !isBrush && !isSolid && hasValue && series.type !== "boolean" && !isTextType;
             const gradientLayer = shouldUseGradient
               ? `linear-gradient(135deg, ${bg} 0%, ${palette.scaleHigh} 100%)`
               : undefined;
             const title =
-              series.type === "emoji"
-                ? emojiValue
-                  ? `${dayStr}: ${emojiValue}`
+              isTextType
+                ? textValue
+                  ? `${dayStr}: ${textValue}`
                   : isFuture
                     ? `${dayStr}: future dates cannot be set`
                     : dayStr
@@ -461,11 +427,12 @@ function QuestionCalendar({
                   : isFuture
                     ? `${dayStr}: future dates cannot be set`
                     : dayStr;
+            const isTextPopoverOpen = activeTextDay === dayStr;
 
             return (
               <div
                 key={dayStr}
-                className={`bujo-calendar-day h-14 ${
+                className={`bujo-calendar-day group relative h-14 ${
                   isFuture ? "bujo-calendar-day--future" : isEditable ? "cursor-pointer" : "cursor-default"
                 } ${isBrush && hasValue ? "bujo-calendar-day--brush" : ""} ${isSolid && hasValue ? "bujo-calendar-day--solid" : ""}`}
                 style={{
@@ -481,14 +448,21 @@ function QuestionCalendar({
                 aria-label={title}
                 role="button"
                 onClick={() => {
-                  if (isFuture || !isEditable) return;
+                  if (isFuture) return;
+                  if (isTextType && textValue) {
+                    setActiveTextDay((prev) => (prev === dayStr ? null : dayStr));
+                    return;
+                  }
+                  if (!isEditable) return;
                   onSelectDay(dayStr, value, isFuture);
                 }}
               >
                 <span className="bujo-calendar-day__date text-sm">{format(day, "d")}</span>
                 <span className="bujo-calendar-day__note">
-                  {series.type === "emoji"
-                    ? emojiValue ?? "—"
+                  {isTextType
+                    ? hasValue
+                      ? "✓"
+                      : "—"
                     : value === undefined
                       ? "—"
                       : series.type === "boolean"
@@ -497,12 +471,21 @@ function QuestionCalendar({
                           : "No"
                         : value.toFixed(0)}
                 </span>
+                {isTextType && textValue && (
+                  <div
+                    className={`absolute left-1/2 top-1/2 z-10 w-44 -translate-x-1/2 -translate-y-1/2 rounded-md border border-[var(--bujo-border)] bg-white p-2 text-xs text-gray-800 shadow-lg transition-opacity ${
+                      isTextPopoverOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                    }`}
+                  >
+                    {textValue}
+                  </div>
+                )}
                 <span className="sr-only">{title}</span>
               </div>
             );
           })}
         </div>
-        <LegendKey type={series.type} scaleColors={scaleColors} palette={palette} />
+        <LegendKey type={series.type} palette={palette} />
       </div>
     </div>
   );
@@ -521,13 +504,12 @@ function NumberBarChart({
 }) {
   const daily = buildDailyAverages(series);
   const last = daily.slice(-14);
-  if (last.length === 0) return null;
   const isBrush = chartStyle === "brush";
   const isSolid = chartStyle === "solid";
 
   const maxValue = last.reduce((m, d) => Math.max(m, d.value), 0);
   const colors = last.map((d) =>
-    colorForValue(d.value, series.type, maxValue, palette, scaleColors, series.scaleRange),
+    colorForValue(d.value, series.type, maxValue, palette, scaleColors),
   );
 
   const options = useMemo<ChartOptions<"bar">>(
@@ -595,6 +577,8 @@ function NumberBarChart({
     ],
   };
 
+  if (last.length === 0) return null;
+
   return (
     <div className={`mt-4 bujo-chart ${isBrush ? "bujo-chart--brush" : ""} ${isSolid ? "bujo-chart--solid" : ""}`}>
       <Bar data={data} options={options} />
@@ -623,18 +607,15 @@ function DayValueModal({
   error: string | null;
 }) {
   const series = state?.series;
-  const [value, setValue] = useState<number | boolean | null>(null);
-  const scaleMin = series?.scaleRange?.min ?? 1;
-  const scaleMax = series?.scaleRange?.max ?? 5;
-
-  useEffect(() => {
-    if (!state || !series) return;
-    if (series.type === "boolean") {
-      setValue(state.initialValue !== undefined ? state.initialValue >= 1 : false);
-    } else {
-      setValue(state.initialValue ?? null);
-    }
-  }, [series, state]);
+  const initialValue =
+    state && series
+      ? series.type === "boolean"
+        ? state.initialValue !== undefined
+          ? state.initialValue >= 1
+          : false
+        : state.initialValue ?? null
+      : null;
+  const [value, setValue] = useState<number | boolean | null>(initialValue);
 
   if (!state || !series) return null;
 
@@ -680,13 +661,9 @@ function DayValueModal({
             </div>
           ) : (
             <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600">
-                {series.type === "scale" ? `Scale value (${scaleMin}-${scaleMax})` : "Numeric value"}
-              </label>
+              <label className="text-xs font-medium text-gray-600">Numeric value</label>
               <input
                 type="number"
-                min={series.type === "scale" ? scaleMin : undefined}
-                max={series.type === "scale" ? scaleMax : undefined}
                 step={1}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                 value={typeof value === "number" ? value : ""}
@@ -931,21 +908,25 @@ export default function InsightsChart({
             const seriesPalette = series.palette ? sanitizePalette(series.palette, palette) : palette;
             const seriesScaleColors = buildScaleColors(seriesPalette);
             const daily = buildDailyAverages(series);
-            const emojiDaily = series.type === "emoji" ? buildEmojiDaily(series) : [];
-            const recentEmoji = series.type === "emoji" ? emojiDaily.slice(-7) : [];
-            const recentNumeric = series.type === "emoji" ? [] : daily.slice(-7);
-            const hasRecent = series.type === "emoji" ? recentEmoji.length > 0 : recentNumeric.length > 0;
+            const textPoints = series.textPoints ?? [];
+            const recentText = textPoints.slice(-7);
+            const recentNumeric = daily.slice(-7);
+            const isTextType =
+              series.type === "text" || series.type === "single_choice" || series.type === "multi_choice";
+            const hasRecent = isTextType ? recentText.length > 0 : recentNumeric.length > 0;
             const formatValue = (value: number) => {
               if (series.type === "boolean") return value >= 1 ? "Yes" : "No";
-              return Number.isFinite(value) ? value.toFixed(series.type === "scale" ? 0 : 1) : "—";
+              return Number.isFinite(value) ? value.toFixed(1) : "—";
             };
+            const formatTextValue = (value: string) =>
+              value.length > 120 ? `${value.slice(0, 117)}...` : value;
             const countValue =
-              series.type === "emoji"
-                ? emojiDaily.length
+              isTextType
+                ? textPoints.length
                 : series.type === "boolean"
                   ? daily.reduce((sum, item) => sum + (item.value >= 1 ? 1 : 0), 0)
                   : daily.length;
-            const latestEmoji = emojiDaily.length > 0 ? emojiDaily[emojiDaily.length - 1]?.value : null;
+            const latestText = textPoints.length > 0 ? textPoints[textPoints.length - 1]?.value : null;
             return (
               <>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -965,9 +946,9 @@ export default function InsightsChart({
                 <>
                 {seriesDisplayOption === "graph" && (
                   <>
-                    {series.type === "emoji" ? (
+                    {isTextType ? (
                       <p className="mt-3 text-sm text-gray-600">
-                        Graph view isn&apos;t available for emoji answers. Use list, grid, or count instead.
+                        Graph view isn&apos;t available for text or choice answers. Use list, grid, or count instead.
                       </p>
                     ) : series.type === "number" ? (
                       <NumberBarChart
@@ -1000,19 +981,9 @@ export default function InsightsChart({
                           })()}
                           options={(() => {
                             const baseLineOptions = buildLineOptions(seriesPalette);
-                            const yMinBase =
-                              series.type === "scale"
-                                ? series.scaleRange?.min ?? 1
-                                : series.type === "boolean"
-                                  ? 0
-                                  : undefined;
-                            const yMaxBase =
-                              series.type === "scale"
-                                ? series.scaleRange?.max ?? 5
-                                : series.type === "boolean"
-                                  ? 1
-                                  : undefined;
-                            const verticalPadding = series.type === "scale" ? 0.35 : 0;
+                            const yMinBase = series.type === "boolean" ? 0 : undefined;
+                            const yMaxBase = series.type === "boolean" ? 1 : undefined;
+                            const verticalPadding = 0;
                             const yMin =
                               series.type === "boolean"
                                 ? -0.1
@@ -1027,22 +998,17 @@ export default function InsightsChart({
                                   : undefined;
                             const baseStepSize = (baseLineOptions.scales?.y as LinearScaleOptions | undefined)?.ticks?.stepSize;
                             const stepSize =
-                              (series.type === "scale" || series.type === "boolean") && yMinBase !== undefined && yMaxBase !== undefined
+                              series.type === "boolean" && yMinBase !== undefined && yMaxBase !== undefined
                                 ? Math.max(1, Math.round((yMaxBase - yMinBase) / 4))
                                 : baseStepSize;
                             const tickCallback =
-                                  series.type === "scale"
+                              series.type === "boolean"
                                 ? (value: string | number) => {
                                     const numeric = typeof value === "string" ? Number(value) : value;
-                                    return Number.isInteger(numeric) ? numeric.toString() : "";
+                                    if (numeric === 1) return "Yes";
+                                    if (numeric === 0) return "No";
+                                    return "";
                                   }
-                                : series.type === "boolean"
-                                  ? (value: string | number) => {
-                                      const numeric = typeof value === "string" ? Number(value) : value;
-                                          if (numeric === 1) return "Yes";
-                                          if (numeric === 0) return "No";
-                                      return "";
-                                    }
                                 : baseLineOptions.scales?.y?.ticks?.callback;
 
                             return {
@@ -1084,11 +1050,11 @@ export default function InsightsChart({
                       <p className="text-sm text-gray-700">No data yet.</p>
                     ) : (
                       <ul className="space-y-1 text-sm text-gray-800">
-                        {series.type === "emoji"
-                          ? recentEmoji.map((item) => (
-                              <li key={`${series.id}-${item.date}`} className="flex items-center justify-between">
+                        {isTextType
+                          ? recentText.map((item) => (
+                              <li key={`${series.id}-${item.date}`} className="flex items-center justify-between gap-2">
                                 <span className="text-xs text-gray-600">{format(parseISO(item.date), "MMM d")}</span>
-                                <span className="text-lg">{item.value}</span>
+                                <span className="text-right">{formatTextValue(item.value)}</span>
                               </li>
                             ))
                           : recentNumeric.map((item) => (
@@ -1104,9 +1070,11 @@ export default function InsightsChart({
 
                 {seriesDisplayOption === "count" && (
                   <div className="mt-3 flex items-center justify-center rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] py-6">
-                    {series.type === "emoji" ? (
+                    {isTextType ? (
                       <div className="text-center">
-                        <p className="text-4xl font-semibold text-[var(--bujo-ink)]">{latestEmoji ?? "—"}</p>
+                        <p className="text-sm font-semibold text-[var(--bujo-ink)]">
+                          {latestText ? formatTextValue(latestText) : "—"}
+                        </p>
                         <p className="text-xs text-[var(--bujo-subtle)]">Latest entry</p>
                         <p className="mt-1 text-[11px] text-[var(--bujo-subtle)]">
                           {countValue} {countValue === 1 ? "entry" : "entries"}
@@ -1132,6 +1100,7 @@ export default function InsightsChart({
       ))}
 
       <DayValueModal
+        key={modalState ? `${modalState.series.id}-${modalState.date}` : "modal-empty"}
         state={modalState}
         onClose={() => setModalState(null)}
         onSave={handleSave}

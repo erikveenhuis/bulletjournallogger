@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { format, subDays } from "date-fns";
 import { useRouter } from "next/navigation";
 import type { AnswerType, DisplayOption } from "@/lib/types";
@@ -29,7 +29,6 @@ type AnswerRow = {
   bool_value: boolean | null;
   number_value: number | null;
   scale_value: number | null;
-  emoji_value: string | null;
   text_value: string | null;
   created_at: string;
   updated_at: string;
@@ -56,11 +55,11 @@ const generateDemoValues = (answerType: AnswerType, days: number = 7): DemoValue
   const meta = answerType.meta || {};
   const minNumber = typeof meta.min === "number" ? meta.min : 0;
   const maxNumber = typeof meta.max === "number" ? meta.max : 100;
-  const minScale = typeof meta.min === "number" ? meta.min : 1;
-  const maxScale = typeof meta.max === "number" ? meta.max : 5;
-  const emojiItems = answerType.items || ["😀", "🙂", "😐", "😞", "😡"];
+  const choiceSteps = Array.isArray(meta.steps)
+    ? meta.steps.map((step) => String(step))
+    : ["1", "2", "3", "4", "5"];
   const textSamples = ["Good", "Great", "Okay", "Fine", "Excellent", "Rough", "Calm"];
-  const listItems = answerType.items || [];
+  const listItems = choiceSteps;
 
   return Array.from({ length: days }).map(() => {
     switch (answerType.type) {
@@ -68,15 +67,13 @@ const generateDemoValues = (answerType: AnswerType, days: number = 7): DemoValue
         return random() > 0.4;
       case "number":
         return Math.round(minNumber + random() * (maxNumber - minNumber));
-      case "scale":
-        return Math.round(minScale + random() * (maxScale - minScale));
-      case "emoji":
-        return emojiItems[Math.floor(random() * emojiItems.length)];
       case "text":
         return textSamples[Math.floor(random() * textSamples.length)];
-      case "yes_no_list": {
+      case "single_choice":
+        return listItems[Math.floor(random() * listItems.length)];
+      case "multi_choice": {
         if (listItems.length === 0) return [];
-        return listItems.filter((item) => random() > 0.5).slice(0, listItems.length);
+        return listItems.filter(() => random() > 0.5).slice(0, listItems.length);
       }
       default:
         return null;
@@ -111,8 +108,6 @@ const buildDemoAnswersFromValues = (
   const meta = answerType.meta || {};
   const minNumber = typeof meta.min === "number" ? meta.min : 0;
   const maxNumber = typeof meta.max === "number" ? meta.max : 100;
-  const minScale = typeof meta.min === "number" ? meta.min : 1;
-  const maxScale = typeof meta.max === "number" ? meta.max : 5;
 
   const toNumber = (value: DemoValue, fallback: number) => {
     if (typeof value === "number" && !Number.isNaN(value)) return value;
@@ -158,7 +153,7 @@ const buildDemoAnswersFromValues = (
     const dateStr = format(date, "yyyy-MM-dd");
     const timestamp = `${dateStr}T00:00:00.000Z`;
     const templateId = `preview-${answerType.id}`;
-    const baseAnswer: Omit<AnswerRow, "bool_value" | "number_value" | "scale_value" | "emoji_value" | "text_value"> = {
+    const baseAnswer: Omit<AnswerRow, "bool_value" | "number_value" | "scale_value" | "text_value"> = {
       id: `preview-${answerType.id}-${index}`,
       user_id: "preview-user",
       template_id: templateId,
@@ -184,7 +179,6 @@ const buildDemoAnswersFromValues = (
           bool_value: toBoolean(value),
           number_value: null,
           scale_value: null,
-          emoji_value: null,
           text_value: null,
         };
       case "number":
@@ -193,25 +187,6 @@ const buildDemoAnswersFromValues = (
           bool_value: null,
           number_value: Math.min(maxNumber, Math.max(minNumber, toNumber(value, minNumber))),
           scale_value: null,
-          emoji_value: null,
-          text_value: null,
-        };
-      case "scale":
-        return {
-          ...baseAnswer,
-          bool_value: null,
-          number_value: null,
-          scale_value: Math.min(maxScale, Math.max(minScale, toNumber(value, minScale))),
-          emoji_value: null,
-          text_value: null,
-        };
-      case "emoji":
-        return {
-          ...baseAnswer,
-          bool_value: null,
-          number_value: null,
-          scale_value: null,
-          emoji_value: toStringValue(value, "🙂"),
           text_value: null,
         };
       case "text":
@@ -220,17 +195,23 @@ const buildDemoAnswersFromValues = (
           bool_value: null,
           number_value: null,
           scale_value: null,
-          emoji_value: null,
           text_value: toStringValue(value, "Okay"),
         };
-      case "yes_no_list": {
+      case "single_choice":
+        return {
+          ...baseAnswer,
+          bool_value: null,
+          number_value: null,
+          scale_value: null,
+          text_value: toStringValue(value, "1"),
+        };
+      case "multi_choice": {
         const selectedItems = toStringArray(value);
         return {
           ...baseAnswer,
-          bool_value: selectedItems.length > 0,
+          bool_value: null,
           number_value: null,
           scale_value: null,
-          emoji_value: null,
           text_value: selectedItems.length > 0 ? JSON.stringify(selectedItems) : null,
         };
       }
@@ -240,7 +221,6 @@ const buildDemoAnswersFromValues = (
           bool_value: null,
           number_value: null,
           scale_value: null,
-          emoji_value: null,
           text_value: null,
         };
     }
@@ -271,17 +251,15 @@ export default function AnswerTypesClient({ answerTypes }: Props) {
     return next;
   });
 
-  useEffect(() => {
-    setDemoDataByTypeId((prev) => {
-      const next = { ...prev };
-      answerTypes.forEach((at) => {
-        if (!next[at.id]) {
-          next[at.id] = JSON.stringify(generateDemoValues(at, 7));
-        }
-      });
-      return next;
+  const demoDataByTypeIdResolved = useMemo(() => {
+    const next = { ...demoDataByTypeId };
+    answerTypes.forEach((at) => {
+      if (!next[at.id]) {
+        next[at.id] = JSON.stringify(generateDemoValues(at, 7));
+      }
     });
-  }, [answerTypes]);
+    return next;
+  }, [answerTypes, demoDataByTypeId]);
 
   const filtered = useMemo(() => {
     return answerTypes.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -290,10 +268,10 @@ export default function AnswerTypesClient({ answerTypes }: Props) {
   const parsedDemoByTypeId = useMemo(() => {
     const next: Record<string, { values: DemoValue[]; error: string | null }> = {};
     answerTypes.forEach((at) => {
-      next[at.id] = parseDemoValues(demoDataByTypeId[at.id] ?? "");
+      next[at.id] = parseDemoValues(demoDataByTypeIdResolved[at.id] ?? "");
     });
     return next;
-  }, [answerTypes, demoDataByTypeId]);
+  }, [answerTypes, demoDataByTypeIdResolved]);
 
   const updateDraft = (id: string, updates: Partial<DraftState>) => {
     setDrafts((prev) => ({
@@ -443,7 +421,7 @@ export default function AnswerTypesClient({ answerTypes }: Props) {
                     </p>
                   </div>
                   <textarea
-                    value={demoDataByTypeId[at.id] ?? ""}
+                    value={demoDataByTypeIdResolved[at.id] ?? ""}
                     onChange={(e) =>
                       setDemoDataByTypeId((prev) => ({
                         ...prev,

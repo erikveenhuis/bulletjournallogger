@@ -1,6 +1,6 @@
 // Legacy type - kept for backward compatibility during migration
 // Use AnswerType.type instead
-export type QuestionType = "boolean" | "number" | "scale" | "text" | "emoji" | "yes_no_list";
+export type QuestionType = "boolean" | "number" | "text" | "single_choice" | "multi_choice";
 
 export type ChartStyle = "gradient" | "brush" | "solid";
 export type DisplayOption = "graph" | "list" | "grid" | "count";
@@ -40,7 +40,7 @@ export type AnswerType = {
   id: string;
   name: string;
   description: string | null;
-  type: "boolean" | "number" | "scale" | "text" | "emoji" | "yes_no_list";
+  type: "boolean" | "number" | "text" | "single_choice" | "multi_choice";
   items: string[] | null;
   meta: Record<string, unknown> | null;
   default_display_option?: DisplayOption;
