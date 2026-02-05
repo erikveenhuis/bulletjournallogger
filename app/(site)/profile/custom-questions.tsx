@@ -17,6 +17,14 @@ const stepsFromMeta = (meta: Record<string, unknown> | null | undefined) => {
   return raw.map((step) => String(step));
 };
 
+const decimalsFromMeta = (meta: Record<string, unknown> | null | undefined) => {
+  const raw = meta?.decimals;
+  const numeric = typeof raw === "number" ? raw : raw === "" ? NaN : Number(raw);
+  if (!Number.isFinite(numeric)) return "";
+  const clamped = Math.max(0, Math.min(4, Math.round(numeric)));
+  return String(clamped);
+};
+
 type Props = {
   categories: Category[];
   answerTypes: AnswerType[];
@@ -38,6 +46,7 @@ export default function CustomQuestions({
   const [categoryId, setCategoryId] = useState("");
   const [answerTypeId, setAnswerTypeId] = useState("");
   const [unit, setUnit] = useState("");
+  const [decimals, setDecimals] = useState("");
   const [steps, setSteps] = useState<string[]>(() => {
     const initialSteps = stepsFromMeta(null);
     if (initialSteps.length > 0) return initialSteps;
@@ -69,6 +78,7 @@ export default function CustomQuestions({
     setCategoryId("");
     setAnswerTypeId("");
     setUnit("");
+    setDecimals("");
     setSteps([]);
   };
 
@@ -78,6 +88,7 @@ export default function CustomQuestions({
     setCategoryId(template.category_id || "");
     setAnswerTypeId(template.answer_type_id);
     setUnit(typeof template.meta?.unit === "string" ? template.meta.unit : "");
+    setDecimals(decimalsFromMeta(template.meta));
     const initialSteps = stepsFromMeta(template.meta);
     setSteps(initialSteps.length > 0 ? initialSteps : []);
   };
@@ -111,8 +122,16 @@ export default function CustomQuestions({
       meta.steps = resolvedSteps;
     } else if (isNumberType) {
       const trimmed = unit.trim();
+      const parsedDecimals = decimals === "" ? null : Number(decimals);
+      const normalizedDecimals =
+        parsedDecimals === null || !Number.isFinite(parsedDecimals)
+          ? null
+          : Math.max(0, Math.min(4, Math.round(parsedDecimals)));
       if (trimmed) {
         meta.unit = trimmed;
+      }
+      if (normalizedDecimals !== null) {
+        meta.decimals = normalizedDecimals;
       }
     }
 
@@ -274,18 +293,37 @@ export default function CustomQuestions({
             />
           )}
           {isNumberType && (
-            <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
-              <span className="font-medium">Unit</span>
-              <input
-                placeholder="e.g. cups, steps"
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                className="bujo-input"
-              />
-              <span className="text-xs text-[var(--bujo-subtle)]">
-                Optional label used in Insights.
-              </span>
-            </label>
+            <div className="space-y-3">
+              <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
+                <span className="font-medium">Unit</span>
+                <input
+                  placeholder="e.g. cups, steps"
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value)}
+                  className="bujo-input"
+                />
+                <span className="text-xs text-[var(--bujo-subtle)]">
+                  Optional label used in Insights.
+                </span>
+              </label>
+              <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
+                <span className="font-medium">Decimals</span>
+                <select
+                  value={decimals}
+                  onChange={(e) => setDecimals(e.target.value)}
+                  className="bujo-input"
+                >
+                  <option value="">0 (default)</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select>
+                <span className="text-xs text-[var(--bujo-subtle)]">
+                  Choose how many decimals to show for this number question.
+                </span>
+              </label>
+            </div>
           )}
         </div>
       </div>

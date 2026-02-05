@@ -50,6 +50,15 @@ const resolveChoiceMeta = (meta: Record<string, unknown> | null | undefined) => 
   return { meta: { steps } };
 };
 
+const normalizeDecimals = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const rounded = Math.round(numeric);
+  if (rounded < 0 || rounded > 4) return null;
+  return rounded;
+};
+
 export async function GET(request: Request) {
   const supabase = await createServerSupabaseClient();
   const url = new URL(request.url);
@@ -136,7 +145,11 @@ export async function POST(request: Request) {
     metaPayload = resolved.meta;
   } else if (answerType.type === "number") {
     const unit = typeof baseMeta.unit === "string" ? baseMeta.unit.trim() : "";
-    metaPayload = unit ? { unit } : {};
+    const decimals = normalizeDecimals(baseMeta.decimals);
+    metaPayload = {
+      ...(unit ? { unit } : {}),
+      ...(decimals !== null ? { decimals } : {}),
+    };
   } else {
     metaPayload = {};
   }
@@ -224,7 +237,11 @@ export async function PUT(request: Request) {
       updates.meta = resolved.meta;
     } else if (effectiveType === "number") {
       const unit = typeof baseMeta.unit === "string" ? baseMeta.unit.trim() : "";
-      updates.meta = unit ? { unit } : {};
+      const decimals = normalizeDecimals(baseMeta.decimals);
+      updates.meta = {
+        ...(unit ? { unit } : {}),
+        ...(decimals !== null ? { decimals } : {}),
+      };
     } else if (effectiveType) {
       updates.meta = {};
     } else {
@@ -263,7 +280,11 @@ export async function PUT(request: Request) {
         updates.meta = resolved.meta;
       } else if (answerType.type === "number") {
         const unit = typeof baseMeta.unit === "string" ? baseMeta.unit.trim() : "";
-        updates.meta = unit ? { unit } : {};
+        const decimals = normalizeDecimals(baseMeta.decimals);
+        updates.meta = {
+          ...(unit ? { unit } : {}),
+          ...(decimals !== null ? { decimals } : {}),
+        };
       } else {
         updates.meta = {};
       }

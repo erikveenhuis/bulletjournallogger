@@ -135,6 +135,18 @@ export default function JournalForm({ date, userQuestions, accountTier, dateForm
     return defaultChoiceSteps;
   };
 
+  const getNumberDecimals = (meta?: Record<string, unknown> | null) => {
+    const raw = meta?.decimals;
+    const numeric = typeof raw === "number" ? raw : raw === "" ? NaN : Number(raw);
+    if (!Number.isFinite(numeric)) return 0;
+    return Math.max(0, Math.min(4, Math.round(numeric)));
+  };
+
+  const getNumberStep = (decimals: number) => {
+    if (decimals <= 0) return 1;
+    return Number(`0.${"0".repeat(Math.max(0, decimals - 1))}1`);
+  };
+
   const setValue = (id: string, value: AnswerValue) => {
     setHasUserEdited(true);
     setValues((prev) => ({ ...prev, [id]: value }));
@@ -691,6 +703,11 @@ export default function JournalForm({ date, userQuestions, accountTier, dateForm
           const isWaterQuestion = (t.title ?? "").trim().toLowerCase() === "how many cups of water?";
           const status = getStatusMeta(uq.template_id);
           const answerType = getAnswerTypeForQuestion(uq);
+          const numberDecimals =
+            answerType?.type === "number"
+              ? getNumberDecimals(uq.template.meta as Record<string, unknown> | null)
+              : 0;
+          const numberStep = getNumberStep(numberDecimals);
           const numericValue = values[uq.template_id];
           const numberInputValue = (() => {
             if (typeof numericValue === "number") return numericValue;
@@ -761,6 +778,7 @@ export default function JournalForm({ date, userQuestions, accountTier, dateForm
               {answerType?.type === "number" && (
                 <input
                   type="number"
+                  step={numberStep}
                   className={isWaterQuestion ? "w-full px-3 py-2" : "bujo-input"}
                   value={numberInputValue}
                   onChange={(e) => {

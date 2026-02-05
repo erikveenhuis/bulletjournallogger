@@ -89,6 +89,15 @@ export async function POST(request: Request) {
     return defaultChoiceSteps;
   };
 
+  const normalizeDecimals = (value: unknown) => {
+    if (value === null || value === undefined || value === "") return null;
+    const numeric = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    const rounded = Math.round(numeric);
+    if (rounded < 0 || rounded > 4) return null;
+    return rounded;
+  };
+
   const normalizeAnswer = (answer: (typeof answers)[number]) => {
     const templateMeta = templateMetaMap[answer.template_id];
     const resolvedType = templateMeta?.type ?? answer.type;
@@ -96,6 +105,8 @@ export async function POST(request: Request) {
       ? getChoiceSteps(templateMeta?.meta)
       : [];
     const allowed = new Set(steps);
+    const decimals =
+      resolvedType === "number" ? normalizeDecimals(templateMeta?.meta?.decimals) : null;
     const rawValue = answer.value;
     let value: unknown = null;
 
@@ -113,7 +124,16 @@ export async function POST(request: Request) {
           break;
         }
         const numeric = typeof rawValue === "number" ? rawValue : Number(rawValue);
-        value = Number.isNaN(numeric) ? null : numeric;
+        if (Number.isNaN(numeric)) {
+          value = null;
+          break;
+        }
+        if (typeof decimals === "number") {
+          const factor = Math.pow(10, decimals);
+          value = Math.round(numeric * factor) / factor;
+        } else {
+          value = numeric;
+        }
         break;
       }
       case "single_choice": {

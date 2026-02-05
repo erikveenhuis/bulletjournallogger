@@ -17,6 +17,14 @@ const stepsFromMeta = (meta: Record<string, unknown> | null | undefined) => {
   return raw.map((step) => String(step));
 };
 
+const decimalsFromMeta = (meta: Record<string, unknown> | null | undefined) => {
+  const raw = meta?.decimals;
+  const numeric = typeof raw === "number" ? raw : raw === "" ? NaN : Number(raw);
+  if (!Number.isFinite(numeric)) return "";
+  const clamped = Math.max(0, Math.min(4, Math.round(numeric)));
+  return String(clamped);
+};
+
 type Props = {
   mode: "create" | "edit";
   initialData?: QuestionTemplate;
@@ -33,6 +41,7 @@ export default function QuestionForm({ mode, initialData, categories, answerType
   const [unit, setUnit] = useState(() =>
     typeof initialData?.meta?.unit === "string" ? initialData.meta.unit : "",
   );
+  const [decimals, setDecimals] = useState(() => decimalsFromMeta(initialData?.meta));
   const [steps, setSteps] = useState(() => {
     const initialSteps = stepsFromMeta(initialData?.meta);
     if (initialSteps.length > 0) return initialSteps;
@@ -90,8 +99,16 @@ export default function QuestionForm({ mode, initialData, categories, answerType
       metaJson = { steps: resolvedSteps };
     } else if (isNumberType) {
       const trimmed = unit.trim();
+      const parsedDecimals = decimals === "" ? null : Number(decimals);
+      const normalizedDecimals =
+        parsedDecimals === null || !Number.isFinite(parsedDecimals)
+          ? null
+          : Math.max(0, Math.min(4, Math.round(parsedDecimals)));
       if (trimmed) {
-        metaJson = { unit: trimmed };
+        metaJson.unit = trimmed;
+      }
+      if (normalizedDecimals !== null) {
+        metaJson.decimals = normalizedDecimals;
       }
     }
 
@@ -205,18 +222,37 @@ export default function QuestionForm({ mode, initialData, categories, answerType
               />
             )}
             {isNumberType && (
-              <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
-                <span className="font-medium">Unit</span>
-                <input
-                  placeholder="e.g. cups, steps"
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value)}
-                  className="bujo-input"
-                />
-                <span className="text-xs text-[var(--bujo-subtle)]">
-                  Optional label used in Insights.
-                </span>
-              </label>
+              <div className="space-y-3">
+                <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
+                  <span className="font-medium">Unit</span>
+                  <input
+                    placeholder="e.g. cups, steps"
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value)}
+                    className="bujo-input"
+                  />
+                  <span className="text-xs text-[var(--bujo-subtle)]">
+                    Optional label used in Insights.
+                  </span>
+                </label>
+                <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
+                  <span className="font-medium">Decimals</span>
+                  <select
+                    value={decimals}
+                    onChange={(e) => setDecimals(e.target.value)}
+                    className="bujo-input"
+                  >
+                    <option value="">0 (default)</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                  </select>
+                  <span className="text-xs text-[var(--bujo-subtle)]">
+                    Choose how many decimals to show for this number question.
+                  </span>
+                </label>
+              </div>
             )}
             <div className="flex flex-wrap gap-2">
               <button

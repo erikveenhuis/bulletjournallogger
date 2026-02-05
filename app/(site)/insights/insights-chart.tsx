@@ -59,6 +59,7 @@ type QuestionSeries = {
   type: "number" | "boolean" | "text" | "single_choice" | "multi_choice" | "other";
   typeLabel: string;
   unit?: string;
+  decimals?: number;
   points: Array<{ date: string; value: number }>;
   textPoints?: Array<{ date: string; value: string; rawValue?: string | string[] }>;
   palette?: ChartPalette;
@@ -76,6 +77,20 @@ const displayOptionLabels: Record<DisplayOption, string> = {
   list: "List",
   grid: "Grid",
   count: "Count",
+};
+
+const normalizeDecimals = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const rounded = Math.round(numeric);
+  if (rounded < 0 || rounded > 4) return null;
+  return rounded;
+};
+
+const getNumberStep = (decimals: number) => {
+  if (decimals <= 0) return 1;
+  return Number(`0.${"0".repeat(Math.max(0, decimals - 1))}1`);
 };
 const uncategorizedId = "uncategorized";
 
@@ -238,6 +253,8 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
         ((row.question_templates?.answer_types?.meta as Record<string, unknown> | null) || null);
       const metaUnit = templateMeta?.["unit"] ?? answerTypeMeta?.["unit"];
       const unit = typeof metaUnit === "string" ? metaUnit : undefined;
+      const metaDecimals = templateMeta?.["decimals"] ?? answerTypeMeta?.["decimals"];
+      const decimals = normalizeDecimals(metaDecimals) ?? 0;
       const defaultDisplay = normalizeDisplayOption(
         row.question_templates?.answer_types?.default_display_option,
       );
@@ -324,6 +341,7 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
           type,
           typeLabel,
           unit,
+          decimals,
           points: [],
           textPoints:
             type === "text" || type === "single_choice" || type === "multi_choice"
@@ -528,6 +546,7 @@ function QuestionCalendar({
             const textValue = textMap[dayStr];
             const hasValue = isTextType ? textValue !== undefined : value !== undefined;
             const isFuture = day > today;
+            const numberDecimals = typeof series.decimals === "number" ? series.decimals : 0;
             const bg =
               hasValue
                 ? isTextType
@@ -557,7 +576,7 @@ function QuestionCalendar({
                 : value !== undefined
                   ? series.type === "boolean"
                     ? `${displayDate}: ${value >= 1 ? "Yes" : "No"}`
-                    : `${displayDate}: ${value.toFixed(1)}`
+                    : `${displayDate}: ${value.toFixed(numberDecimals)}`
                   : isFuture
                     ? `${displayDate}: future dates cannot be set`
                     : displayDate;
@@ -617,7 +636,7 @@ function QuestionCalendar({
                       "No"
                     )
                   ) : (
-                    value.toFixed(0)
+                    value.toFixed(numberDecimals)
                   )}
                 </span>
                 {isTextType && textValue && (
@@ -912,7 +931,7 @@ function DayValueModal({
               <label className="text-xs font-medium text-gray-600">Numeric value</label>
               <input
                 type="number"
-                step={1}
+                step={getNumberStep(typeof series.decimals === "number" ? series.decimals : 0)}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                 value={typeof value === "number" ? value : ""}
                 onChange={(e) => {
@@ -1425,7 +1444,8 @@ export default function InsightsChart({
             const hasRecent = isTextType ? recentText.length > 0 : recentNumeric.length > 0;
             const formatValue = (value: number) => {
               if (series.type === "boolean") return value >= 1 ? "Yes" : "No";
-              return Number.isFinite(value) ? value.toFixed(1) : "—";
+              const decimals = typeof series.decimals === "number" ? series.decimals : 0;
+              return Number.isFinite(value) ? value.toFixed(decimals) : "—";
             };
             const formatTextValue = (value: string) =>
               value.length > 120 ? `${value.slice(0, 117)}...` : value;
