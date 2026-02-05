@@ -180,7 +180,7 @@ export default function CustomQuestions({ categories, answerTypes, templates, us
       <div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-2">
           <input
-            placeholder="Question title"
+            placeholder="Type your question here"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="bujo-input"
