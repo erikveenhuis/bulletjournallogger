@@ -26,7 +26,7 @@ export default async function QuestionsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("account_tier, chart_palette, chart_style, is_admin")
+    .select("account_tier, chart_palette, chart_style, is_admin, date_format")
     .eq("user_id", effectiveUser.id)
     .maybeSingle();
 
@@ -98,6 +98,7 @@ export default async function QuestionsPage() {
         chartStyle={profile?.chart_style ?? null}
         defaultPalette={themeDefaults.chart_palette}
         defaultStyle={themeDefaults.chart_style}
+        dateFormat={profile?.date_format ?? null}
       />
     </div>
   );

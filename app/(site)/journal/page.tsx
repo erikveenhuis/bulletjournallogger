@@ -27,7 +27,7 @@ export default async function JournalPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("account_tier, is_admin")
+    .select("account_tier, is_admin, date_format")
     .eq("user_id", effectiveUser.id)
     .maybeSingle();
 
@@ -57,6 +57,7 @@ export default async function JournalPage() {
         date={today}
         userQuestions={(userQuestions || []) as UserQuestion[]}
         accountTier={effectiveTier}
+        dateFormat={profile?.date_format ?? null}
       />
     </div>
   );

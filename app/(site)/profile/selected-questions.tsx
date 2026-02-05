@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { format, subDays } from "date-fns";
-import type { AnswerType, ChartPalette, ChartStyle, DisplayOption, UserQuestion } from "@/lib/types";
+import type { AnswerType, ChartPalette, ChartStyle, DateFormat, DisplayOption, UserQuestion } from "@/lib/types";
 import { defaultThemeDefaults } from "@/lib/theme-constants";
 import ConfirmDialog from "@/components/confirm-dialog";
 import InsightsChart from "@/app/(site)/insights/insights-chart";
@@ -18,6 +18,7 @@ type Props = {
   chartStyle?: ChartStyle | null;
   defaultPalette?: ChartPalette;
   defaultStyle?: ChartStyle;
+  dateFormat?: DateFormat | null;
 };
 
 type OverrideEdit = {
@@ -37,6 +38,7 @@ export default function SelectedQuestions({
   chartStyle,
   defaultPalette,
   defaultStyle,
+  dateFormat,
 }: Props) {
   const [mounted] = useState(() => typeof window !== "undefined");
   const fallbackPalette = useMemo(
@@ -750,6 +752,7 @@ export default function SelectedQuestions({
                       chartStyle={chartStyle ?? defaultStyle ?? defaultThemeDefaults.chart_style}
                       displayOption={currentDisplay}
                       userQuestions={[]}
+                      dateFormat={dateFormat ?? null}
                     />
                   </div>
                 </div>

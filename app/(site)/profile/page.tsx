@@ -78,7 +78,7 @@ export default async function ProfilePage() {
             </Link>
 
             <Link
-              href="/profile/theme"
+              href="/profile/display"
               className="group block rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:border-[var(--bujo-accent-ink)] hover:bg-[var(--bujo-accent)]/5 hover:shadow-md"
             >
               <div className="flex items-center gap-3">
@@ -88,9 +88,9 @@ export default async function ProfilePage() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Theme</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Display</h3>
                   <p className="text-sm text-gray-600">
-                    Customize chart colors and visualization styles.
+                    Customize chart colors, visualization styles, and date format.
                   </p>
                 </div>
               </div>

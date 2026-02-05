@@ -241,9 +241,6 @@ export default function ProfileForm({
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-800">Push reminders</label>
-          <p className="text-xs text-gray-600">
-            This toggle controls notifications for this device only.
-          </p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -265,6 +262,9 @@ export default function ProfileForm({
               </span>
             </button>
           </div>
+          <p className="text-xs text-gray-600">
+            This toggle controls notifications for this device only.
+          </p>
         </div>
       </div>
 

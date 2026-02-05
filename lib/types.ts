@@ -4,6 +4,7 @@ export type QuestionType = "boolean" | "number" | "text" | "single_choice" | "mu
 
 export type ChartStyle = "gradient" | "brush" | "solid";
 export type DisplayOption = "graph" | "list" | "grid" | "count";
+export type DateFormat = "mdy" | "dmy" | "ymd";
 
 export type Profile = {
   user_id: string;
@@ -14,6 +15,7 @@ export type Profile = {
   account_tier?: number | null;
   chart_palette?: ChartPalette | null;
   chart_style?: ChartStyle | null;
+  date_format?: DateFormat | null;
 };
 
 export type AdminProfile = Profile & {

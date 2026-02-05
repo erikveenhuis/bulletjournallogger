@@ -16,6 +16,7 @@ const allowedPaletteKeys = [
   "countAccent",
 ] as const;
 const allowedChartStyles = ["gradient", "brush", "solid"] as const;
+const allowedDateFormats = ["mdy", "dmy", "ymd"] as const;
 type ChartStyle = (typeof allowedChartStyles)[number];
 
 function isFiveMinuteIncrement(value: unknown) {
@@ -83,7 +84,7 @@ export async function PUT(request: Request) {
   }
 
   const body = await request.json();
-  const { timezone, reminder_time, push_opt_in, chart_palette, chart_style, account_tier } = body;
+  const { timezone, reminder_time, push_opt_in, chart_palette, chart_style, account_tier, date_format } = body;
 
   if (
     reminder_time !== undefined &&
@@ -123,6 +124,23 @@ export async function PUT(request: Request) {
     }
   }
 
+  const isValidDateFormat = (value: unknown): value is (typeof allowedDateFormats)[number] =>
+    typeof value === "string" && allowedDateFormats.includes(value as (typeof allowedDateFormats)[number]);
+
+  let normalizedDateFormat: (typeof allowedDateFormats)[number] | undefined;
+  if (date_format !== undefined) {
+    if (date_format === null) {
+      normalizedDateFormat = "mdy";
+    } else if (!isValidDateFormat(date_format)) {
+      return NextResponse.json(
+        { error: "date_format must be one of mdy, dmy, or ymd." },
+        { status: 400 },
+      );
+    } else {
+      normalizedDateFormat = date_format;
+    }
+  }
+
   const payload: Record<string, unknown> = {
     user_id: user.id,
     timezone,
@@ -130,6 +148,7 @@ export async function PUT(request: Request) {
     push_opt_in,
     chart_palette: normalizedPalette === undefined ? undefined : normalizedPalette,
     chart_style: normalizedChartStyle,
+    date_format: normalizedDateFormat,
   };
 
   if (normalizedTier !== undefined) {

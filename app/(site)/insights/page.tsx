@@ -20,7 +20,7 @@ export default async function InsightsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("chart_palette, chart_style, account_tier, is_admin")
+    .select("chart_palette, chart_style, account_tier, is_admin, date_format")
     .eq("user_id", effectiveUser.id)
     .maybeSingle();
 
@@ -77,6 +77,7 @@ export default async function InsightsPage() {
         userQuestions={normalizedUserQuestions}
         defaultPalette={themeDefaults.chart_palette}
         defaultStyle={themeDefaults.chart_style}
+        dateFormat={profile?.date_format ?? null}
       />
     </div>
   );

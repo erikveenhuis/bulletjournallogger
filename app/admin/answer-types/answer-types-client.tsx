@@ -454,6 +454,7 @@ export default function AnswerTypesClient({ answerTypes }: Props) {
                                   chartStyle="gradient"
                                   userQuestions={[]}
                                   displayOption={opt}
+                                  dateFormat={null}
                                 />
                               </div>
                             </div>

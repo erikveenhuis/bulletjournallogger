@@ -16,12 +16,14 @@ import {
   startOfToday,
   startOfWeek,
 } from "date-fns";
-import type { UserQuestion } from "@/lib/types";
+import { formatDateValue, normalizeDateFormat } from "@/lib/date-format";
+import type { DateFormat, UserQuestion } from "@/lib/types";
 
 type Props = {
   date: string;
   userQuestions: UserQuestion[];
   accountTier: number;
+  dateFormat?: DateFormat | null;
 };
 
 type AnswerValue = string | number | boolean | string[] | null;
@@ -55,7 +57,7 @@ type AnswerRow = {
 
 type DayStatus = "full" | "partial";
 
-export default function JournalForm({ date, userQuestions, accountTier }: Props) {
+export default function JournalForm({ date, userQuestions, accountTier, dateFormat }: Props) {
   const todayDate = startOfToday();
   const [selectedDate, setSelectedDate] = useState(date);
   const [currentMonth, setCurrentMonth] = useState(() => parseISO(date));
@@ -115,6 +117,7 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
   const defaultChoiceSteps = ["1", "2", "3", "4", "5"];
   const maxTextLength = 120;
   const selectedDateObj = selectedDate ? parseISO(selectedDate) : todayDate;
+  const resolvedDateFormat = normalizeDateFormat(dateFormat);
   const canGoNextMonth = !isAfter(startOfMonth(addMonths(currentMonth, 1)), todayDate);
 
   const isEmojiOnly = (value: string) => {
@@ -437,10 +440,14 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
     setConfirmDialog({
       open: true,
       title: "Clear All Answers",
-      description: `Are you sure you want to clear all answers for ${format(selectedDateObj, "MMMM d, yyyy")}? This action cannot be undone.`,
+      description: `Are you sure you want to clear all answers for ${formatDateValue(
+        selectedDateObj,
+        resolvedDateFormat,
+        "long",
+      )}? This action cannot be undone.`,
       onConfirm: performClearAll,
     });
-  }, [selectedDate, selectedDateObj, validTemplateIds]);
+  }, [selectedDate, selectedDateObj, validTemplateIds, resolvedDateFormat]);
 
   const handleClearSingleAnswer = useCallback(async (templateId: string) => {
     if (!selectedDate) return;
@@ -625,7 +632,9 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
               >
                 ← Prev
               </button>
-              <div className="text-sm font-semibold text-gray-900">{format(currentMonth, "MMMM yyyy")}</div>
+              <div className="text-sm font-semibold text-gray-900">
+                {formatDateValue(currentMonth, resolvedDateFormat, "monthYear")}
+              </div>
               <button
                 type="button"
                 className="bujo-btn-secondary px-3 py-1 text-xs disabled:opacity-40"
@@ -669,7 +678,7 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
                 Clear All
               </button>
               <span className="font-semibold text-gray-800">
-                Selected: {format(selectedDateObj, "MMMM d, yyyy")}
+                Selected: {formatDateValue(selectedDateObj, resolvedDateFormat, "long")}
               </span>
             </div>
           </div>

@@ -307,6 +307,7 @@ export default function PreviewSection({
             chartPalette={null}
             chartStyle="gradient"
             userQuestions={[]}
+            dateFormat={null}
           />
         </div>
       )}
@@ -336,6 +337,7 @@ export default function PreviewSection({
                         chartPalette={null}
                         chartStyle="gradient"
                         userQuestions={[]}
+                        dateFormat={null}
                       />
                     </div>
                   )}

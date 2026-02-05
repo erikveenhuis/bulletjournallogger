@@ -16,7 +16,8 @@ import {
   type TooltipItem,
 } from "chart.js";
 import { addDays, format, parseISO, startOfWeek, subWeeks } from "date-fns";
-import { type ChartPalette, type ChartStyle, type DisplayOption } from "@/lib/types";
+import { formatDateValue, normalizeDateFormat } from "@/lib/date-format";
+import { type ChartPalette, type ChartStyle, type DateFormat, type DisplayOption } from "@/lib/types";
 import { defaultThemeDefaults } from "@/lib/theme-constants";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, ChartLegend);
@@ -471,12 +472,14 @@ function QuestionCalendar({
   palette,
   scaleColors,
   chartStyle,
+  dateFormat,
 }: {
   series: QuestionSeries;
   onSelectDay: (date: string, value: number | undefined, isFuture: boolean) => void;
   palette: ChartPalette;
   scaleColors: ScaleColors;
   chartStyle: ChartStyle;
+  dateFormat: DateFormat;
 }) {
   const today = new Date();
   const calendarEnd = startOfWeek(today, { weekStartsOn: 0 });
@@ -520,6 +523,7 @@ function QuestionCalendar({
         <div className="grid grid-cols-7 gap-1 text-sm">
           {days.map((day) => {
             const dayStr = format(day, "yyyy-MM-dd");
+            const displayDate = formatDateValue(day, dateFormat, "long");
             const value = valueMap[dayStr];
             const textValue = textMap[dayStr];
             const hasValue = isTextType ? textValue !== undefined : value !== undefined;
@@ -546,17 +550,17 @@ function QuestionCalendar({
             const title =
               isTextType
                 ? textValue
-                  ? `${dayStr}: ${textValue}`
+                  ? `${displayDate}: ${textValue}`
                   : isFuture
-                    ? `${dayStr}: future dates cannot be set`
-                    : dayStr
+                    ? `${displayDate}: future dates cannot be set`
+                    : displayDate
                 : value !== undefined
                   ? series.type === "boolean"
-                    ? `${dayStr}: ${value >= 1 ? "Yes" : "No"}`
-                    : `${dayStr}: ${value.toFixed(1)}`
+                    ? `${displayDate}: ${value >= 1 ? "Yes" : "No"}`
+                    : `${displayDate}: ${value.toFixed(1)}`
                   : isFuture
-                    ? `${dayStr}: future dates cannot be set`
-                    : dayStr;
+                    ? `${displayDate}: future dates cannot be set`
+                    : displayDate;
             const isTextPopoverOpen = activeTextDay === dayStr;
 
             return (
@@ -642,12 +646,14 @@ function NumberBarChart({
   scaleColors,
   chartStyle,
   onSelectDay,
+  dateFormat,
 }: {
   series: QuestionSeries;
   palette: ChartPalette;
   scaleColors: ScaleColors;
   chartStyle: ChartStyle;
   onSelectDay: (date: string, value: number | undefined, isFuture: boolean) => void;
+  dateFormat: DateFormat;
 }) {
   const chartRef = useRef<ChartJS<"bar"> | null>(null);
   const daily = buildDailyAverages(series);
@@ -714,7 +720,7 @@ function NumberBarChart({
   );
 
   const data = {
-    labels: last.map((d) => d.date.slice(5)), // show MM-DD
+    labels: last.map((d) => formatDateValue(d.date, dateFormat, "short")),
     datasets: [
       {
         label: series.unit ? `Recent ${series.unit}` : "Recent values",
@@ -755,6 +761,7 @@ function LineTrendChart({
   isBrush,
   isSolid,
   onSelectDay,
+  dateFormat,
 }: {
   series: QuestionSeries;
   daily: Array<{ date: string; value: number }>;
@@ -763,6 +770,7 @@ function LineTrendChart({
   isBrush: boolean;
   isSolid: boolean;
   onSelectDay: (date: string, value: number | undefined, isFuture: boolean) => void;
+  dateFormat: DateFormat;
 }) {
   const chartRef = useRef<ChartJS<"line"> | null>(null);
   return (
@@ -770,7 +778,7 @@ function LineTrendChart({
       <Line
         ref={chartRef}
         data={{
-          labels: daily.map((d) => d.date.slice(5)),
+          labels: daily.map((d) => formatDateValue(d.date, dateFormat, "short")),
           datasets: [
             {
               label: `${series.typeLabel} trend`,
@@ -813,12 +821,14 @@ function DayValueModal({
   onSave,
   saving,
   error,
+  dateFormat,
 }: {
   state: ModalState | null;
   onClose: () => void;
   onSave: (value: number | boolean | string | string[] | null) => void;
   saving: boolean;
   error: string | null;
+  dateFormat: DateFormat;
 }) {
   const series = state?.series;
   const initialValue =
@@ -841,7 +851,7 @@ function DayValueModal({
 
   if (!state || !series) return null;
 
-  const dateLabel = format(parseISO(state.date), "MMM d, yyyy");
+  const dateLabel = formatDateValue(state.date, dateFormat, "long");
   const disableSave =
     saving ||
     (series.type === "boolean" || series.type === "number"
@@ -1035,6 +1045,7 @@ export default function InsightsChart({
   displayOption,
   defaultPalette: fallbackPalette,
   defaultStyle: fallbackStyle,
+  dateFormat,
 }: {
   answers: AnswerRow[];
   chartPalette?: Partial<ChartPalette> | null;
@@ -1043,6 +1054,7 @@ export default function InsightsChart({
   displayOption?: DisplayOption | null;
   defaultPalette?: ChartPalette;
   defaultStyle?: ChartStyle;
+  dateFormat?: DateFormat | null;
 }) {
   const overrideMap = useMemo(
     () => new Map((userQuestions || []).map((uq) => [uq.template_id, uq])),
@@ -1100,6 +1112,7 @@ export default function InsightsChart({
     () => sanitizePalette(chartPalette ?? null, fallbackPalette ?? defaultPalette),
     [chartPalette, fallbackPalette],
   );
+  const resolvedDateFormat = normalizeDateFormat(dateFormat);
   const resolvedStyle: ChartStyle =
     chartStyle === "brush" || chartStyle === "solid"
       ? chartStyle
@@ -1522,6 +1535,7 @@ export default function InsightsChart({
                         palette={seriesPalette}
                         scaleColors={seriesScaleColors}
                         chartStyle={resolvedStyle}
+                        dateFormat={resolvedDateFormat}
                         onSelectDay={(date, value, isFuture) => handleSelectDay(series, date, value, isFuture)}
                       />
                     ) : (
@@ -1531,6 +1545,7 @@ export default function InsightsChart({
                         palette={seriesPalette}
                         isBrush={isBrush}
                         isSolid={isSolid}
+                        dateFormat={resolvedDateFormat}
                         onSelectDay={(date, value, isFuture) =>
                           handleSelectDay(
                             series,
@@ -1645,6 +1660,7 @@ export default function InsightsChart({
                     palette={seriesPalette}
                     scaleColors={seriesScaleColors}
                     chartStyle={resolvedStyle}
+                    dateFormat={resolvedDateFormat}
                   />
                 )}
 
@@ -1674,7 +1690,7 @@ export default function InsightsChart({
                                   }
                                 >
                                   <span className="text-xs text-gray-600">
-                                    {format(parseISO(item.date), "MMM d")}
+                                    {formatDateValue(item.date, resolvedDateFormat, "short")}
                                   </span>
                                   <span
                                     className="text-right bujo-emoji-value"
@@ -1703,7 +1719,7 @@ export default function InsightsChart({
                                   }
                                 >
                                   <span className="text-xs text-gray-600">
-                                    {format(parseISO(item.date), "MMM d")}
+                                    {formatDateValue(item.date, resolvedDateFormat, "short")}
                                   </span>
                                   <span className="font-semibold">{formatValue(item.value)}</span>
                                 </button>
@@ -1769,6 +1785,7 @@ export default function InsightsChart({
         onSave={handleSave}
         saving={saving}
         error={error}
+        dateFormat={resolvedDateFormat}
       />
     </div>
   );

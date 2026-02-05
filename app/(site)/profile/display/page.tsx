@@ -4,14 +4,14 @@ import ThemeForm from "../theme-form";
 
 export const dynamic = "force-dynamic";
 
-export default async function ThemePage() {
+export default async function DisplayPage() {
   const supabase = await getEffectiveSupabaseClient();
   const { user: effectiveUser } = await getEffectiveUser();
 
   if (!effectiveUser) {
     return (
       <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
-        Please <a href="/sign-in" className="underline">sign in</a> to customize your theme.
+        Please <a href="/sign-in" className="underline">sign in</a> to customize your display.
       </div>
     );
   }
@@ -33,7 +33,7 @@ export default async function ThemePage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="bujo-section-title text-xs">Profile</p>
-          <h1 className="text-3xl font-semibold text-gray-900">Theme</h1>
+          <h1 className="text-3xl font-semibold text-gray-900">Display</h1>
           <p className="text-sm text-gray-700">
             Customize the appearance of your charts and data visualizations.
           </p>
@@ -48,7 +48,7 @@ export default async function ThemePage() {
         />
       ) : (
         <div className="rounded-lg border border-[var(--bujo-border)] bg-white p-4 text-sm text-gray-700">
-          <a href="/profile/account" className="underline">Upgrade your account</a> to unlock theme customization.
+          <a href="/profile/account" className="underline">Upgrade your account</a> to unlock display customization.
         </div>
       )}
     </div>

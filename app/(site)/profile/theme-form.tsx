@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { type ChartPalette, type ChartStyle } from "@/lib/types";
+import { dateFormatOptions, normalizeDateFormat } from "@/lib/date-format";
+import { type ChartPalette, type ChartStyle, type DateFormat } from "@/lib/types";
 import { defaultThemeDefaults } from "@/lib/theme-constants";
 
 type ThemeFormProps = {
@@ -10,6 +11,7 @@ type ThemeFormProps = {
     | {
         chart_palette?: ChartPalette | null;
         chart_style?: ChartStyle | null;
+        date_format?: DateFormat | null;
       }
     | null;
   title?: string;
@@ -73,6 +75,9 @@ export default function ThemeForm({
   });
   const [chartPalette, setChartPalette] = useState<ChartPalette>(() =>
     mergePalette(paletteOverride ?? ((profile?.chart_palette as ChartPalette | null) ?? null), resolvedDefaultPalette),
+  );
+  const [dateFormat, setDateFormat] = useState<DateFormat>(() =>
+    normalizeDateFormat(profile?.date_format ?? null),
   );
   const [message, setMessage] = useState<string | null>(null);
   const router = useRouter();
@@ -157,11 +162,13 @@ export default function ThemeForm({
   const saveTheme = async (updates?: {
     chartPalette?: ChartPalette;
     chartStyle?: ChartStyle;
+    dateFormat?: DateFormat;
   }) => {
     if (readOnly) return;
     const payload = {
       chart_palette: updates?.chartPalette ?? chartPalette,
       chart_style: updates?.chartStyle ?? chartStyle,
+      date_format: updates?.dateFormat ?? dateFormat,
     };
 
     setMessage(null);
@@ -207,6 +214,28 @@ export default function ThemeForm({
       </p>
 
       <div className="mt-6 space-y-4 rounded-xl border border-dashed border-[var(--bujo-border)] bg-white/70 p-4 shadow-inner">
+        <div className="space-y-2">
+          <h3 className="text-lg font-semibold text-gray-900">Date format</h3>
+          <p className="text-sm text-gray-700">
+            Choose how dates appear in insights charts and journal views.
+          </p>
+          <select
+            value={dateFormat}
+            onChange={(e) => {
+              const nextFormat = normalizeDateFormat(e.target.value);
+              setDateFormat(nextFormat);
+              void saveTheme({ dateFormat: nextFormat });
+            }}
+            className="bujo-input max-w-xs"
+            disabled={readOnly}
+          >
+            {dateFormatOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Graph colors</h3>
