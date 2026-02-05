@@ -22,9 +22,16 @@ type Props = {
   answerTypes: AnswerType[];
   templates: QuestionTemplate[];
   userQuestions: UserQuestion[];
+  accountTier: number;
 };
 
-export default function CustomQuestions({ categories, answerTypes, templates, userQuestions }: Props) {
+export default function CustomQuestions({
+  categories,
+  answerTypes,
+  templates,
+  userQuestions,
+  accountTier,
+}: Props) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -46,6 +53,15 @@ export default function CustomQuestions({ categories, answerTypes, templates, us
   const isChoiceType =
     selectedAnswerType?.type === "single_choice" || selectedAnswerType?.type === "multi_choice";
   const isNumberType = selectedAnswerType?.type === "number";
+  const isTierLocked = accountTier < 3;
+  const isTierLimited = accountTier === 3 && templates.length >= 5;
+  const isCreateLocked = isTierLocked || isTierLimited;
+  const isSubmitLocked = editingId ? isTierLocked : isCreateLocked;
+  const tierExplanation = isTierLocked
+    ? "Custom questions require Tier 3+. Upgrade to add or edit questions."
+    : !editingId && isTierLimited
+      ? "Tier 3 includes up to 5 custom questions. Upgrade to add more."
+      : null;
 
   const resetForm = () => {
     setEditingId(null);
@@ -69,6 +85,12 @@ export default function CustomQuestions({ categories, answerTypes, templates, us
 
   const submit = async () => {
     setMessage(null);
+    if (isSubmitLocked) {
+      if (tierExplanation) {
+        setMessage(tierExplanation);
+      }
+      return;
+    }
     if (!title.trim()) {
       setMessage("Title is required");
       return;
@@ -243,8 +265,9 @@ export default function CustomQuestions({ categories, answerTypes, templates, us
           <div className="flex flex-wrap gap-2">
             <button
               onClick={submit}
-              className="bujo-btn text-sm"
-              disabled={submitting}
+              className="bujo-btn text-sm disabled:cursor-not-allowed disabled:opacity-70"
+              disabled={submitting || isSubmitLocked}
+              title={isSubmitLocked && tierExplanation ? tierExplanation : undefined}
             >
               {submitting ? "Saving..." : editingId ? "Save changes" : "Add question"}
             </button>
@@ -254,6 +277,15 @@ export default function CustomQuestions({ categories, answerTypes, templates, us
               </button>
             )}
           </div>
+          {tierExplanation && (
+            <p className="text-xs text-[var(--bujo-subtle)]">
+              {tierExplanation}{" "}
+              <a href="/profile/account" className="underline">
+                Manage your plan
+              </a>
+              .
+            </p>
+          )}
           {message && <p className="bujo-message text-sm">{message}</p>}
         </div>
       </div>

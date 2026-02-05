@@ -82,19 +82,13 @@ export default async function QuestionsPage() {
         userQuestions={(userQuestions || []) as UserQuestion[]}
       />
 
-      {effectiveTier >= 3 ? (
-        <CustomQuestions
-          categories={categories || []}
-          answerTypes={(answerTypes || []) as AnswerType[]}
-          templates={(customTemplates || []) as QuestionTemplate[]}
-          userQuestions={(userQuestions || []) as UserQuestion[]}
-        />
-      ) : (
-        <div className="rounded-lg border border-[var(--bujo-border)] bg-white p-4 text-sm text-gray-700">
-          Want to build your own questions? <a href="/profile/account" className="underline">Upgrade your account</a> to unlock custom
-          questions and answer combinations.
-        </div>
-      )}
+      <CustomQuestions
+        categories={categories || []}
+        answerTypes={(answerTypes || []) as AnswerType[]}
+        templates={(customTemplates || []) as QuestionTemplate[]}
+        userQuestions={(userQuestions || []) as UserQuestion[]}
+        accountTier={effectiveTier}
+      />
 
       <SelectedQuestions
         userQuestions={(userQuestions || []) as UserQuestion[]}
