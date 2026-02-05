@@ -1163,6 +1163,10 @@ export default function InsightsChart({
   const monthLabel = format(selectedMonth, "LLLL yyyy");
   const currentMonthStart = startOfMonth(new Date());
   const canGoNextMonth = selectedMonthStart.getTime() < currentMonthStart.getTime();
+  const monthControlLabel =
+    selectedMonth.getFullYear() === new Date().getFullYear()
+      ? format(selectedMonth, "LLLL")
+      : format(selectedMonth, "LLLL yyyy");
 
   const buildLineOptions = (paletteForSeries: ChartPalette): ChartOptions<"line"> => ({
     responsive: true,
@@ -1409,49 +1413,49 @@ export default function InsightsChart({
   return (
     <div className="space-y-4">
       <div className={`bujo-card bujo-torn ${isBrush ? "bujo-card--brush" : ""} ${isSolid ? "bujo-card--solid" : ""}`}>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-600">Month</h2>
-            <p className="text-lg font-semibold text-gray-900">{monthLabel}</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+          <div className="sm:flex-1">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-600">
+              {monthControlLabel}
+            </h2>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:flex-1">
             <button
               type="button"
-              className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+              className="bujo-btn-secondary px-3 py-1 text-xs"
               onClick={() => setSelectedMonth((prev) => subMonths(prev, 1))}
             >
-              ← Previous
+              ← Prev
             </button>
+            <label htmlFor="insights-month-jump" className="sr-only">
+              Jump to month
+            </label>
+            <input
+              id="insights-month-jump"
+              type="text"
+              inputMode="numeric"
+              placeholder="YYYY-MM"
+              className="w-28 rounded-md border border-gray-200 px-2 py-1 text-center text-xs font-semibold text-gray-900 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+              value={monthInput}
+              onChange={(event) => {
+                const value = event.target.value;
+                setMonthInput(value);
+                if (!/^\d{4}-\d{2}$/.test(value)) return;
+                const [year, month] = value.split("-").map((part) => Number(part));
+                if (!year || !month) return;
+                const nextMonth = startOfMonth(new Date(year, month - 1, 1));
+                const currentMonthStart = startOfMonth(new Date());
+                setSelectedMonth(nextMonth > currentMonthStart ? currentMonthStart : nextMonth);
+              }}
+            />
             <button
               type="button"
-              className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="bujo-btn-secondary px-3 py-1 text-xs disabled:opacity-40"
               onClick={() => setSelectedMonth((prev) => addMonths(prev, 1))}
               disabled={!canGoNextMonth}
             >
               Next →
             </button>
-            <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
-              <span className="uppercase tracking-wide">Jump</span>
-              <label htmlFor="insights-month-jump" className="sr-only">
-                Jump to month
-              </label>
-              <input
-                id="insights-month-jump"
-                type="text"
-                inputMode="numeric"
-                placeholder="YYYY-MM"
-                className="w-24 rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-800 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
-                value={monthInput}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setMonthInput(value);
-                  if (!/^\d{4}-\d{2}$/.test(value)) return;
-                  const [year, month] = value.split("-").map((part) => Number(part));
-                  if (!year || !month) return;
-                  setSelectedMonth(new Date(year, month - 1, 1));
-                }}
-              />
-            </div>
           </div>
         </div>
       </div>

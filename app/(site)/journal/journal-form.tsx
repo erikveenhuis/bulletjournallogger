@@ -61,6 +61,7 @@ export default function JournalForm({ date, userQuestions, accountTier, dateForm
   const todayDate = startOfToday();
   const [selectedDate, setSelectedDate] = useState(date);
   const [currentMonth, setCurrentMonth] = useState(() => parseISO(date));
+  const [monthInput, setMonthInput] = useState(() => format(startOfMonth(parseISO(date)), "yyyy-MM"));
   const [answeredDates, setAnsweredDates] = useState<Record<string, DayStatus>>({});
   const [values, setValues] = useState<Record<string, AnswerValue>>({});
   const [error, setError] = useState<string | null>(null);
@@ -331,6 +332,10 @@ export default function JournalForm({ date, userQuestions, accountTier, dateForm
   }, [selectedDate, fetchExistingAnswers]);
 
   useEffect(() => {
+    setMonthInput(format(currentMonth, "yyyy-MM"));
+  }, [currentMonth]);
+
+  useEffect(() => {
     fetchAnsweredDays(currentMonth);
   }, [currentMonth, fetchAnsweredDays]);
 
@@ -559,6 +564,12 @@ export default function JournalForm({ date, userQuestions, accountTier, dateForm
   const monthEnd = endOfMonth(monthStart);
   const calendarStart = startOfWeek(monthStart);
   const calendarEnd = endOfWeek(monthEnd);
+  const monthLabel = (() => {
+    const currentYear = todayDate.getFullYear();
+    return currentMonth.getFullYear() === currentYear
+      ? format(currentMonth, "LLLL")
+      : format(currentMonth, "LLLL yyyy");
+  })();
 
   const weeks: ReactElement[] = [];
   let day = calendarStart;
@@ -629,34 +640,59 @@ export default function JournalForm({ date, userQuestions, accountTier, dateForm
     <section className="bujo-card bujo-torn">
       <div className="space-y-4">
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Journal date</p>
-              <p className="text-sm text-gray-700">
-                Calendar shows today highlighted. Future days are disabled. Green dots mark days with all answers saved; orange dots mark partially answered days.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="bujo-btn-secondary px-3 py-1 text-xs"
-                onClick={() => setCurrentMonth(addMonths(currentMonth, -1))}
-              >
-                ← Prev
-              </button>
-              <div className="text-sm font-semibold text-gray-900">
-                {formatDateValue(currentMonth, resolvedDateFormat, "monthYear")}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Journal date</p>
+            <p className="text-sm text-gray-700">
+              Calendar shows today highlighted. Future days are disabled. Green dots mark days with all answers saved; orange dots mark partially answered days.
+            </p>
+          </div>
+          <div className="bujo-card bujo-torn bujo-card--flat">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+              <div className="sm:flex-1">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-600">
+                  {monthLabel}
+                </h2>
               </div>
-              <button
-                type="button"
-                className="bujo-btn-secondary px-3 py-1 text-xs disabled:opacity-40"
-                disabled={!canGoNextMonth}
-                onClick={() => {
-                  if (canGoNextMonth) setCurrentMonth(addMonths(currentMonth, 1));
-                }}
-              >
-                Next →
-              </button>
+              <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:flex-1">
+                <button
+                  type="button"
+                  className="bujo-btn-secondary px-3 py-1 text-xs"
+                  onClick={() => setCurrentMonth(addMonths(currentMonth, -1))}
+                >
+                  ← Prev
+                </button>
+                <label htmlFor="journal-month-jump" className="sr-only">
+                  Jump to month
+                </label>
+                <input
+                  id="journal-month-jump"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="YYYY-MM"
+                  className="w-28 rounded-md border border-gray-200 px-2 py-1 text-center text-xs font-semibold text-gray-900 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                  value={monthInput}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setMonthInput(value);
+                    if (!/^\d{4}-\d{2}$/.test(value)) return;
+                    const [year, month] = value.split("-").map((part) => Number(part));
+                    if (!year || !month) return;
+                    const nextMonth = startOfMonth(new Date(year, month - 1, 1));
+                    const currentMonthStart = startOfMonth(todayDate);
+                    setCurrentMonth(isAfter(nextMonth, currentMonthStart) ? currentMonthStart : nextMonth);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="bujo-btn-secondary px-3 py-1 text-xs disabled:opacity-40"
+                  disabled={!canGoNextMonth}
+                  onClick={() => {
+                    if (canGoNextMonth) setCurrentMonth(addMonths(currentMonth, 1));
+                  }}
+                >
+                  Next →
+                </button>
+              </div>
             </div>
           </div>
           <div className="overflow-x-auto">
