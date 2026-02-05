@@ -311,10 +311,19 @@ a:hover {
 }
 
 .bujo-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.65rem 1rem;
+  border-radius: 12px;
   background: #f6f0ff;
   color: #3b2f64;
   border: 1.5px dashed #d9ccff;
   box-shadow: 0 6px 0 #c4b5fd;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
   cursor: pointer;
 }
 
