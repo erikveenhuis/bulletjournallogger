@@ -44,7 +44,7 @@ export default async function ProfilePage() {
               className="group block rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:border-[var(--bujo-accent-ink)] hover:bg-[var(--bujo-accent)]/5 hover:shadow-md"
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--bujo-accent)]/10 text-[var(--bujo-accent-ink)]">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-amber-100 via-orange-100 to-rose-100 text-amber-700 shadow-sm">
                   <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                   </svg>
@@ -63,7 +63,7 @@ export default async function ProfilePage() {
               className="group block rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:border-[var(--bujo-accent-ink)] hover:bg-[var(--bujo-accent)]/5 hover:shadow-md"
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--bujo-accent)]/10 text-[var(--bujo-accent-ink)]">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-sky-100 via-blue-100 to-indigo-100 text-sky-700 shadow-sm">
                   <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
@@ -82,7 +82,7 @@ export default async function ProfilePage() {
               className="group block rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:border-[var(--bujo-accent-ink)] hover:bg-[var(--bujo-accent)]/5 hover:shadow-md"
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--bujo-accent)]/10 text-[var(--bujo-accent-ink)]">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-fuchsia-100 via-purple-100 to-violet-100 text-fuchsia-700 shadow-sm">
                   <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a4 4 0 004 4h4a2 2 0 002-2V5z" />
                   </svg>
@@ -101,7 +101,7 @@ export default async function ProfilePage() {
               className="group block rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition hover:border-[var(--bujo-accent-ink)] hover:bg-[var(--bujo-accent)]/5 hover:shadow-md"
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--bujo-accent)]/10 text-[var(--bujo-accent-ink)]">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-100 via-teal-100 to-lime-100 text-emerald-700 shadow-sm">
                   <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A4 4 0 017 21h10a4 4 0 001.879-3.196M12 3v4m0 0l3-3m-3 3L9 4m8 4a4 4 0 01-4 4H9a4 4 0 01-4-4" />
                   </svg>
