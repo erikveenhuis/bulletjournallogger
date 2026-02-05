@@ -75,6 +75,7 @@ const displayOptionLabels: Record<DisplayOption, string> = {
   grid: "Grid",
   count: "Count",
 };
+const uncategorizedId = "uncategorized";
 
 type ScaleColors = {
   veryLow: string;
@@ -104,6 +105,14 @@ function normalizeDisplayOptions(values: unknown): DisplayOption[] {
   return values
     .map((value) => normalizeDisplayOption(value))
     .filter((value): value is DisplayOption => value !== null);
+}
+
+function normalizeCategory(value?: string | null) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (!trimmed) {
+    return { id: uncategorizedId, label: "Uncategorized" };
+  }
+  return { id: trimmed.toLowerCase(), label: trimmed };
 }
 
 function getChoiceSteps(meta?: Record<string, unknown> | null) {
@@ -987,6 +996,23 @@ export default function InsightsChart({
     });
   }, [questionSeries, userQuestions]);
   const [seriesData, setSeriesData] = useState<QuestionSeries[]>(orderedSeries);
+  const categoryOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    questionSeries.forEach((series) => {
+      const normalized = normalizeCategory(series.categorySnapshot ?? null);
+      if (!map.has(normalized.id)) {
+        map.set(normalized.id, normalized.label);
+      }
+    });
+    return Array.from(map, ([id, label]) => ({ id, label })).sort((a, b) => {
+      if (a.id === uncategorizedId && b.id !== uncategorizedId) return 1;
+      if (b.id === uncategorizedId && a.id !== uncategorizedId) return -1;
+      return a.label.localeCompare(b.label);
+    });
+  }, [questionSeries]);
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
+    () => new Set(categoryOptions.map((category) => category.id)),
+  );
   const [modalState, setModalState] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1070,6 +1096,19 @@ export default function InsightsChart({
   useEffect(() => {
     setSeriesData(orderedSeries);
   }, [orderedSeries]);
+
+  useEffect(() => {
+    setSelectedCategories((prev) => {
+      if (categoryOptions.length === 0) return new Set<string>();
+      const next = new Set<string>();
+      categoryOptions.forEach((option) => {
+        if (prev.has(option.id) || prev.size === 0) {
+          next.add(option.id);
+        }
+      });
+      return next;
+    });
+  }, [categoryOptions]);
 
   useEffect(() => {
     const next: Record<string, DisplayOption | null> = {};
@@ -1223,9 +1262,56 @@ export default function InsightsChart({
     );
   }
 
+  const filteredSeries = seriesData.filter((series) =>
+    selectedCategories.has(normalizeCategory(series.categorySnapshot ?? null).id),
+  );
+
   return (
     <div className="space-y-4">
-      {seriesData.map((series) => (
+      {categoryOptions.length > 0 ? (
+        <div className={`bujo-card bujo-torn ${isBrush ? "bujo-card--brush" : ""} ${isSolid ? "bujo-card--solid" : ""}`}>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-600">Filter categories</h2>
+          <div className="mt-3 flex flex-wrap gap-3 text-sm text-gray-700">
+            {categoryOptions.map((category) => {
+              const checked = selectedCategories.has(category.id);
+              return (
+                <label
+                  key={category.id}
+                  className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      setSelectedCategories((prev) => {
+                        const next = new Set(prev);
+                        if (checked) {
+                          next.delete(category.id);
+                        } else {
+                          next.add(category.id);
+                        }
+                        return next;
+                      });
+                    }}
+                  />
+                  <span>{category.label}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {filteredSeries.length === 0 ? (
+        <div className={`bujo-card bujo-torn ${isBrush ? "bujo-card--brush" : ""} ${isSolid ? "bujo-card--solid" : ""}`}>
+          <h2 className="text-xl font-semibold text-gray-900">Trends</h2>
+          <p className="text-sm text-gray-700">
+            {categoryOptions.length === 0 ? "No data yet." : "No categories selected."}
+          </p>
+        </div>
+      ) : null}
+
+      {filteredSeries.map((series) => (
         <div
           key={series.id}
           className={`bujo-card bujo-torn ${isBrush ? "bujo-card--brush" : ""} ${isSolid ? "bujo-card--solid" : ""}`}
