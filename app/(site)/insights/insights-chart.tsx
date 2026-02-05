@@ -483,6 +483,7 @@ function QuestionCalendar({
   const isEditable = series.type === "boolean" || series.type === "number";
   const isTextType =
     series.type === "text" || series.type === "single_choice" || series.type === "multi_choice";
+  const isChoiceType = series.type === "single_choice" || series.type === "multi_choice";
   const [activeTextDay, setActiveTextDay] = useState<string | null>(null);
 
   const daily = buildDailyAverages(series);
@@ -587,17 +588,30 @@ function QuestionCalendar({
               >
                 <span className="bujo-calendar-day__date text-sm">{format(day, "d")}</span>
                 <span className="bujo-calendar-day__note">
-                  {isTextType
-                    ? hasValue
-                      ? "✓"
-                      : "—"
-                    : value === undefined
-                      ? "—"
-                      : series.type === "boolean"
-                        ? value >= 1
-                          ? "Yes"
-                          : "No"
-                        : value.toFixed(0)}
+                  {isChoiceType ? (
+                    <span
+                      className="bujo-emoji-value"
+                      data-emoji-only={textValue && isEmojiOnly(textValue) ? "true" : "false"}
+                    >
+                      {textValue ?? "—"}
+                    </span>
+                  ) : isTextType ? (
+                    hasValue ? (
+                      "✓"
+                    ) : (
+                      "—"
+                    )
+                  ) : value === undefined ? (
+                    "—"
+                  ) : series.type === "boolean" ? (
+                    value >= 1 ? (
+                      "Yes"
+                    ) : (
+                      "No"
+                    )
+                  ) : (
+                    value.toFixed(0)
+                  )}
                 </span>
                 {isTextType && textValue && (
                   <div
