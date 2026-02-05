@@ -48,7 +48,7 @@ export default function StepListEditor({
       <div className="flex items-center justify-between">
         <label className="text-sm font-medium text-[var(--bujo-ink)]">{label}</label>
         <button type="button" onClick={addStep} className="bujo-btn-secondary text-xs">
-          Add step
+          Add option
         </button>
       </div>
       <p className="text-xs text-[var(--bujo-subtle)]">{helperText}</p>
