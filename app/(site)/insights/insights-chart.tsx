@@ -107,6 +107,12 @@ function normalizeDisplayOptions(values: unknown): DisplayOption[] {
     .filter((value): value is DisplayOption => value !== null);
 }
 
+function isEmojiOnly(value: string) {
+  const cleaned = value.replace(/\s+/g, "");
+  if (!cleaned) return false;
+  return /^[\p{Extended_Pictographic}\uFE0F\u200D\u{1F3FB}-\u{1F3FF}]+$/u.test(cleaned);
+}
+
 function normalizeCategory(value?: string | null) {
   const trimmed = typeof value === "string" ? value.trim() : "";
   if (!trimmed) {
@@ -1620,7 +1626,12 @@ export default function InsightsChart({
                                   <span className="text-xs text-gray-600">
                                     {format(parseISO(item.date), "MMM d")}
                                   </span>
-                                  <span className="text-right">{formatTextValue(item.value)}</span>
+                                  <span
+                                    className="text-right bujo-emoji-value"
+                                    data-emoji-only={isEmojiOnly(item.value) ? "true" : "false"}
+                                  >
+                                    {formatTextValue(item.value)}
+                                  </span>
                                 </button>
                               </li>
                             ))

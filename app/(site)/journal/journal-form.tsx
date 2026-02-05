@@ -117,6 +117,12 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
   const selectedDateObj = selectedDate ? parseISO(selectedDate) : todayDate;
   const canGoNextMonth = !isAfter(startOfMonth(addMonths(currentMonth, 1)), todayDate);
 
+  const isEmojiOnly = (value: string) => {
+    const cleaned = value.replace(/\s+/g, "");
+    if (!cleaned) return false;
+    return /^[\p{Extended_Pictographic}\uFE0F\u200D\u{1F3FB}-\u{1F3FF}]+$/u.test(cleaned);
+  };
+
   const getChoiceSteps = (meta?: Record<string, unknown> | null) => {
     const rawSteps = meta?.steps;
     if (Array.isArray(rawSteps)) {
@@ -755,7 +761,12 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
                             checked={selectedValue === step}
                             onChange={() => setValue(uq.template_id, step)}
                           />
-                          <span>&nbsp;{step}</span>
+                          <span
+                            className="bujo-emoji-value"
+                            data-emoji-only={isEmojiOnly(step) ? "true" : "false"}
+                          >
+                            &nbsp;{step}
+                          </span>
                         </label>
                       ))}
                     </div>
@@ -782,7 +793,12 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
                           }}
                           className="h-4 w-4 accent-[#7c5cff]"
                         />
-                        <span className="leading-snug break-words">&nbsp;{step}</span>
+                        <span
+                          className="bujo-emoji-value leading-snug break-words"
+                          data-emoji-only={isEmojiOnly(step) ? "true" : "false"}
+                        >
+                          &nbsp;{step}
+                        </span>
                       </label>
                     ))}
                   </div>
@@ -904,7 +920,12 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
                           {steps.map((step) => (
                             <label key={step} className="flex items-center gap-2">
                               <input type="radio" disabled className="h-4 w-4 accent-[#7c5cff]" />
-                              <span>&nbsp;{step}</span>
+                              <span
+                                className="bujo-emoji-value"
+                                data-emoji-only={isEmojiOnly(step) ? "true" : "false"}
+                              >
+                                &nbsp;{step}
+                              </span>
                             </label>
                           ))}
                         </div>
@@ -918,7 +939,12 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
                             className="inline-flex min-w-[220px] flex-1 items-start gap-4 pr-4 text-sm text-gray-800"
                           >
                             <input type="checkbox" disabled className="h-4 w-4 accent-[#7c5cff]" />
-                            <span className="leading-snug break-words">&nbsp;{step}</span>
+                            <span
+                              className="bujo-emoji-value leading-snug break-words"
+                              data-emoji-only={isEmojiOnly(step) ? "true" : "false"}
+                            >
+                              &nbsp;{step}
+                            </span>
                           </label>
                         ))}
                       </div>
