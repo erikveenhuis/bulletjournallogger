@@ -17,14 +17,16 @@ import {
 } from "chart.js";
 import {
   addDays,
+  addMonths,
   endOfMonth,
+  endOfWeek,
   endOfYear,
   format,
   parseISO,
   startOfMonth,
   startOfWeek,
   startOfYear,
-  subWeeks,
+  subMonths,
 } from "date-fns";
 import { formatDateValue, normalizeDateFormat } from "@/lib/date-format";
 import { type ChartPalette, type ChartStyle, type DateFormat, type DisplayOption } from "@/lib/types";
@@ -501,6 +503,7 @@ function QuestionCalendar({
   scaleColors,
   chartStyle,
   dateFormat,
+  month,
 }: {
   series: QuestionSeries;
   onSelectDay: (date: string, value: number | undefined, isFuture: boolean) => void;
@@ -508,10 +511,11 @@ function QuestionCalendar({
   scaleColors: ScaleColors;
   chartStyle: ChartStyle;
   dateFormat: DateFormat;
+  month: Date;
 }) {
   const today = new Date();
-  const calendarEnd = startOfWeek(today, { weekStartsOn: 0 });
-  const calendarStart = startOfWeek(subWeeks(calendarEnd, 5), { weekStartsOn: 0 });
+  const calendarStart = startOfWeek(startOfMonth(month), { weekStartsOn: 0 });
+  const calendarEnd = endOfWeek(endOfMonth(month), { weekStartsOn: 0 });
   const isBrush = chartStyle === "brush";
   const isSolid = chartStyle === "solid";
   const isEditable = series.type === "boolean" || series.type === "number";
@@ -531,7 +535,7 @@ function QuestionCalendar({
 
   const days: Date[] = [];
   let cursor = calendarStart;
-  while (cursor <= addDays(calendarEnd, 6)) {
+  while (cursor <= calendarEnd) {
     days.push(cursor);
     cursor = addDays(cursor, 1);
   }
@@ -676,6 +680,8 @@ function NumberBarChart({
   chartStyle,
   onSelectDay,
   dateFormat,
+  daily,
+  periodLabel,
 }: {
   series: QuestionSeries;
   palette: ChartPalette;
@@ -683,15 +689,16 @@ function NumberBarChart({
   chartStyle: ChartStyle;
   onSelectDay: (date: string, value: number | undefined, isFuture: boolean) => void;
   dateFormat: DateFormat;
+  daily: Array<{ date: string; value: number }>;
+  periodLabel: string;
 }) {
   const chartRef = useRef<ChartJS<"bar"> | null>(null);
-  const daily = buildDailyAverages(series);
-  const last = daily.slice(-14);
+  const visible = daily;
   const isBrush = chartStyle === "brush";
   const isSolid = chartStyle === "solid";
 
-  const maxValue = last.reduce((m, d) => Math.max(m, d.value), 0);
-  const colors = last.map((d) =>
+  const maxValue = visible.reduce((m, d) => Math.max(m, d.value), 0);
+  const colors = visible.map((d) =>
     colorForValue(d.value, series.type, maxValue, palette, scaleColors),
   );
 
@@ -749,18 +756,18 @@ function NumberBarChart({
   );
 
   const data = {
-    labels: last.map((d) => formatDateValue(d.date, dateFormat, "short")),
+    labels: visible.map((d) => formatDateValue(d.date, dateFormat, "short")),
     datasets: [
       {
-        label: series.unit ? `Recent ${series.unit}` : "Recent values",
-        data: last.map((d) => d.value),
+        label: series.unit ? `${periodLabel} (${series.unit})` : periodLabel,
+        data: visible.map((d) => d.value),
         backgroundColor: colors,
         borderColor: colors,
       },
     ],
   };
 
-  if (last.length === 0) return null;
+  if (visible.length === 0) return null;
 
   return (
     <div className={`mt-4 bujo-chart ${isBrush ? "bujo-chart--brush" : ""} ${isSolid ? "bujo-chart--solid" : ""}`}>
@@ -773,7 +780,7 @@ function NumberBarChart({
           if (!elements.length) return;
           const index = elements[0]?.index;
           if (typeof index !== "number") return;
-          const point = last[index];
+          const point = visible[index];
           if (!point) return;
           onSelectDay(point.date, point.value, isFutureDate(point.date));
         }}
@@ -1135,6 +1142,8 @@ export default function InsightsChart({
     });
     return initial;
   });
+  const [selectedMonth, setSelectedMonth] = useState<Date>(() => startOfMonth(new Date()));
+  const [monthInput, setMonthInput] = useState(() => format(startOfMonth(new Date()), "yyyy-MM"));
   const [displaySavingById, setDisplaySavingById] = useState<Record<string, boolean>>({});
   const [displayErrorById, setDisplayErrorById] = useState<Record<string, string | null>>({});
   const palette = useMemo(
@@ -1149,6 +1158,11 @@ export default function InsightsChart({
   const globalDisplayOption = normalizeDisplayOption(displayOption);
   const isBrush = resolvedStyle === "brush";
   const isSolid = resolvedStyle === "solid";
+  const selectedMonthStart = startOfMonth(selectedMonth);
+  const selectedMonthEnd = endOfMonth(selectedMonth);
+  const monthLabel = format(selectedMonth, "LLLL yyyy");
+  const currentMonthStart = startOfMonth(new Date());
+  const canGoNextMonth = selectedMonthStart.getTime() < currentMonthStart.getTime();
 
   const buildLineOptions = (paletteForSeries: ChartPalette): ChartOptions<"line"> => ({
     responsive: true,
@@ -1209,6 +1223,10 @@ export default function InsightsChart({
   useEffect(() => {
     setSeriesData(orderedSeries);
   }, [orderedSeries]);
+
+  useEffect(() => {
+    setMonthInput(format(selectedMonth, "yyyy-MM"));
+  }, [selectedMonth]);
 
   useEffect(() => {
     setSelectedCategories((prev) => {
@@ -1390,6 +1408,53 @@ export default function InsightsChart({
 
   return (
     <div className="space-y-4">
+      <div className={`bujo-card bujo-torn ${isBrush ? "bujo-card--brush" : ""} ${isSolid ? "bujo-card--solid" : ""}`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-600">Month</h2>
+            <p className="text-lg font-semibold text-gray-900">{monthLabel}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+              onClick={() => setSelectedMonth((prev) => subMonths(prev, 1))}
+            >
+              ← Previous
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => setSelectedMonth((prev) => addMonths(prev, 1))}
+              disabled={!canGoNextMonth}
+            >
+              Next →
+            </button>
+            <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+              <span className="uppercase tracking-wide">Jump</span>
+              <label htmlFor="insights-month-jump" className="sr-only">
+                Jump to month
+              </label>
+              <input
+                id="insights-month-jump"
+                type="text"
+                inputMode="numeric"
+                placeholder="YYYY-MM"
+                className="w-24 rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-800 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                value={monthInput}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setMonthInput(value);
+                  if (!/^\d{4}-\d{2}$/.test(value)) return;
+                  const [year, month] = value.split("-").map((part) => Number(part));
+                  if (!year || !month) return;
+                  setSelectedMonth(new Date(year, month - 1, 1));
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
       {categoryOptions.length > 0 ? (
         <div className={`bujo-card bujo-torn ${isBrush ? "bujo-card--brush" : ""} ${isSolid ? "bujo-card--solid" : ""}`}>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-600">Filter categories</h2>
@@ -1443,8 +1508,14 @@ export default function InsightsChart({
             const seriesScaleColors = buildScaleColors(seriesPalette);
             const daily = buildDailyAverages(series);
             const textPoints = series.textPoints ?? [];
-            const recentText = textPoints.slice(-7);
-            const recentNumeric = daily.slice(-7);
+            const isInSelectedMonth = (date: string) => {
+              const parsed = parseISO(date);
+              return parsed >= selectedMonthStart && parsed <= selectedMonthEnd;
+            };
+            const monthlyTextPoints = textPoints.filter((point) => isInSelectedMonth(point.date));
+            const monthlyDaily = daily.filter((item) => isInSelectedMonth(item.date));
+            const recentText = monthlyTextPoints.slice(-7);
+            const recentNumeric = monthlyDaily.slice(-7);
             const isTextType =
               series.type === "text" || series.type === "single_choice" || series.type === "multi_choice";
             const choiceScale =
@@ -1465,25 +1536,15 @@ export default function InsightsChart({
               return match ? (match.rawValue ?? match.value) : null;
             };
             const choiceSteps = series.choiceSteps ?? defaultChoiceSteps;
-            const today = new Date();
-            const monthStart = startOfMonth(today);
-            const monthEnd = endOfMonth(today);
-            const monthLabel = format(today, "LLLL");
-            const yearStart = startOfYear(today);
-            const yearEnd = endOfYear(today);
-            const yearLabel = format(today, "yyyy");
-            const isInCurrentMonth = (date: string) => {
-              const parsed = parseISO(date);
-              return parsed >= monthStart && parsed <= monthEnd;
-            };
-            const isInCurrentYear = (date: string) => {
+            const yearStart = startOfYear(selectedMonth);
+            const yearEnd = endOfYear(selectedMonth);
+            const yearLabel = format(selectedMonth, "yyyy");
+            const isInSelectedYear = (date: string) => {
               const parsed = parseISO(date);
               return parsed >= yearStart && parsed <= yearEnd;
             };
-            const monthlyTextPoints = textPoints.filter((point) => isInCurrentMonth(point.date));
-            const monthlyDaily = daily.filter((item) => isInCurrentMonth(item.date));
-            const yearlyTextPoints = textPoints.filter((point) => isInCurrentYear(point.date));
-            const yearlyDaily = daily.filter((item) => isInCurrentYear(item.date));
+            const yearlyTextPoints = textPoints.filter((point) => isInSelectedYear(point.date));
+            const yearlyDaily = daily.filter((item) => isInSelectedYear(item.date));
             const choiceCounts = (() => {
               if (series.type !== "single_choice" && series.type !== "multi_choice") return null;
               const counts = new Map<string, number>(choiceSteps.map((step) => [step, 0]));
@@ -1602,12 +1663,14 @@ export default function InsightsChart({
                         scaleColors={seriesScaleColors}
                         chartStyle={resolvedStyle}
                         dateFormat={resolvedDateFormat}
+                        daily={monthlyDaily}
+                        periodLabel={`Values in ${monthLabel}`}
                         onSelectDay={(date, value, isFuture) => handleSelectDay(series, date, value, isFuture)}
                       />
                     ) : (
                       <LineTrendChart
                         series={series}
-                        daily={daily}
+                        daily={monthlyDaily}
                         palette={seriesPalette}
                         isBrush={isBrush}
                         isSolid={isSolid}
@@ -1727,6 +1790,7 @@ export default function InsightsChart({
                     scaleColors={seriesScaleColors}
                     chartStyle={resolvedStyle}
                     dateFormat={resolvedDateFormat}
+                    month={selectedMonthStart}
                   />
                 )}
 
