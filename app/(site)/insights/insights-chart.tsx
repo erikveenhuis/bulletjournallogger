@@ -13,6 +13,7 @@ import {
   Legend as ChartLegend,
   type ChartOptions,
   type LinearScaleOptions,
+  type TooltipItem,
 } from "chart.js";
 import { addDays, format, parseISO, startOfWeek, subWeeks } from "date-fns";
 import { type ChartPalette, type ChartStyle, type DisplayOption } from "@/lib/types";
@@ -158,9 +159,11 @@ function buildChoiceScale(steps: string[]) {
   };
 }
 
-function mapChoiceToValue(raw: string | null | undefined, scale: ChoiceScale) {
+function mapChoiceToValue(raw: string | string[] | null | undefined, scale: ChoiceScale) {
   if (!raw) return null;
-  const trimmed = raw.trim();
+  const candidate = Array.isArray(raw) ? raw[0] : raw;
+  if (!candidate) return null;
+  const trimmed = candidate.trim();
   if (!trimmed) return null;
   const index = scale.steps.findIndex((step) => step === trimmed);
   if (index >= 0) return scale.values[index] ?? null;
@@ -1596,9 +1599,11 @@ export default function InsightsChart({
                             series.type === "single_choice" && choiceScale
                               ? {
                                   callbacks: {
-                                    label: (context: { parsed: { y: number } }) => {
-                                      const label = choiceScale.labelByValue.get(context.parsed.y);
-                                      return label ?? String(context.parsed.y);
+                                    label: (context: TooltipItem<"line">) => {
+                                      const value = context.parsed.y;
+                                      if (value === null || value === undefined) return "";
+                                      const label = choiceScale.labelByValue.get(value);
+                                      return label ?? String(value);
                                     },
                                   },
                                 }

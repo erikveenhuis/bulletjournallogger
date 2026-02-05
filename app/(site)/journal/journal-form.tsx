@@ -137,6 +137,12 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
     setValues((prev) => ({ ...prev, [id]: value }));
   };
 
+  const toNumberValue = (value: number | string | null | undefined) => {
+    if (value === null || value === undefined) return null;
+    const numeric = typeof value === "number" ? value : Number(value);
+    return Number.isNaN(numeric) ? null : numeric;
+  };
+
   const isValueAnswered = (value: AnswerValue) => {
     if (value === null || value === undefined) return false;
     if (typeof value === "string") return value.trim().length > 0;
@@ -200,7 +206,10 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
               return;
             }
             if (ans.scale_value !== null && ans.scale_value !== undefined) {
-              map[ans.template_id] = String(ans.scale_value);
+              const numeric = toNumberValue(ans.scale_value as number | string | null | undefined);
+              if (numeric !== null) {
+                map[ans.template_id] = String(numeric);
+              }
               return;
             }
           }
@@ -215,11 +224,11 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
             return;
           }
           if (ans.number_value !== null && ans.number_value !== undefined) {
-            map[ans.template_id] = ans.number_value;
+            map[ans.template_id] = toNumberValue(ans.number_value as number | string | null | undefined);
             return;
           }
           if (ans.scale_value !== null && ans.scale_value !== undefined) {
-            map[ans.template_id] = ans.scale_value;
+            map[ans.template_id] = toNumberValue(ans.scale_value as number | string | null | undefined);
             return;
           }
           if (ans.text_value !== null && ans.text_value !== undefined) {
@@ -674,7 +683,14 @@ export default function JournalForm({ date, userQuestions, accountTier }: Props)
           const status = getStatusMeta(uq.template_id);
           const answerType = getAnswerTypeForQuestion(uq);
           const numericValue = values[uq.template_id];
-          const numberInputValue = typeof numericValue === "number" ? numericValue : "";
+          const numberInputValue = (() => {
+            if (typeof numericValue === "number") return numericValue;
+            if (typeof numericValue === "string" && numericValue.trim() !== "") {
+              const parsed = Number(numericValue);
+              return Number.isNaN(parsed) ? "" : parsed;
+            }
+            return "";
+          })();
           const questionClassName = isWaterQuestion
             ? "doodle-border space-y-3 bg-[var(--bujo-paper)] p-4"
             : "bujo-question space-y-3";

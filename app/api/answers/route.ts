@@ -104,6 +104,14 @@ export async function POST(request: Request) {
         value = rawValue === null || rawValue === undefined ? null : Boolean(rawValue);
         break;
       case "number": {
+        if (rawValue === null || rawValue === undefined) {
+          value = null;
+          break;
+        }
+        if (typeof rawValue === "string" && rawValue.trim() === "") {
+          value = null;
+          break;
+        }
         const numeric = typeof rawValue === "number" ? rawValue : Number(rawValue);
         value = Number.isNaN(numeric) ? null : numeric;
         break;
