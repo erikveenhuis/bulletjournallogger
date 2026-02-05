@@ -124,6 +124,44 @@ function getChoiceSteps(meta?: Record<string, unknown> | null) {
   return defaultChoiceSteps;
 }
 
+type ChoiceScale = {
+  steps: string[];
+  values: number[];
+  min: number;
+  max: number;
+  isNumeric: boolean;
+  labelByValue: Map<number, string>;
+};
+
+function buildChoiceScale(steps: string[]) {
+  const resolved = steps.length > 0 ? steps : defaultChoiceSteps;
+  const numericSteps = resolved.map((step) => Number(step));
+  const isNumeric = numericSteps.every((value) => Number.isFinite(value));
+  const values = isNumeric ? numericSteps : resolved.map((_, index) => index + 1);
+  const labelByValue = new Map<number, string>();
+  values.forEach((value, index) => {
+    labelByValue.set(value, resolved[index] ?? String(value));
+  });
+  return {
+    steps: resolved,
+    values,
+    min: Math.min(...values),
+    max: Math.max(...values),
+    isNumeric,
+    labelByValue,
+  };
+}
+
+function mapChoiceToValue(raw: string | null | undefined, scale: ChoiceScale) {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const index = scale.steps.findIndex((step) => step === trimmed);
+  if (index >= 0) return scale.values[index] ?? null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function sanitizePalette(input?: Partial<ChartPalette> | null, fallback?: ChartPalette): ChartPalette {
   const palette = { ...(fallback ?? defaultPalette) };
   if (!input) return palette;
@@ -207,6 +245,11 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
           : "other";
       const templateId = row.template_id || undefined;
       const palette = (override?.color_palette as ChartPalette | undefined) || undefined;
+      const choiceSteps =
+        type === "single_choice" || type === "multi_choice"
+          ? getChoiceSteps(templateMeta ?? answerTypeMeta ?? null)
+          : undefined;
+      const choiceScale = type === "single_choice" ? buildChoiceScale(choiceSteps ?? defaultChoiceSteps) : null;
       const textEntry = (() => {
         if (type === "text" || type === "single_choice") {
           const raw = row.text_value ?? null;
@@ -279,10 +322,7 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
           palette,
           defaultDisplayOption: defaultDisplay ?? undefined,
           allowedDisplayOptions: allowedDisplays.length > 0 ? allowedDisplays : undefined,
-          choiceSteps:
-            type === "single_choice" || type === "multi_choice"
-              ? getChoiceSteps(templateMeta ?? answerTypeMeta ?? null)
-              : undefined,
+          choiceSteps,
         };
       } else if (palette && !acc[id].palette) {
         acc[id].palette = palette;
@@ -294,6 +334,12 @@ function toQuestionSeries(answers: AnswerRow[], overrides?: Map<string, UserQues
             value: textEntry.display,
             rawValue: textEntry.raw,
           });
+        }
+        if (type === "single_choice") {
+          const numericChoice = mapChoiceToValue(textEntry?.raw ?? null, choiceScale ?? buildChoiceScale(defaultChoiceSteps));
+          if (numericChoice !== null) {
+            acc[id].points.push({ date: row.question_date, value: numericChoice });
+          }
         }
       } else {
         acc[id].points.push({ date: row.question_date, value: Number(value) });
@@ -508,7 +554,9 @@ function QuestionCalendar({
                 key={dayStr}
                 className={`bujo-calendar-day group relative h-14 ${
                   isFuture ? "bujo-calendar-day--future" : isEditable ? "cursor-pointer" : "cursor-default"
-                } ${isBrush && hasValue ? "bujo-calendar-day--brush" : ""} ${isSolid && hasValue ? "bujo-calendar-day--solid" : ""}`}
+                } ${isBrush && hasValue ? "bujo-calendar-day--brush" : ""} ${isSolid && hasValue ? "bujo-calendar-day--solid" : ""} ${
+                  isTextType ? "hover:z-20" : ""
+                } ${isTextPopoverOpen ? "z-20" : ""}`}
                 style={{
                   background: isFuture
                     ? "#f8f1e0"
@@ -547,7 +595,7 @@ function QuestionCalendar({
                 </span>
                 {isTextType && textValue && (
                   <div
-                    className={`absolute left-1/2 top-1/2 z-10 w-44 -translate-x-1/2 -translate-y-1/2 rounded-md border border-[var(--bujo-border)] bg-white p-2 text-xs text-gray-800 shadow-lg transition-opacity ${
+                    className={`absolute left-1/2 top-1/2 z-50 w-44 -translate-x-1/2 -translate-y-1/2 rounded-md border border-[var(--bujo-border)] bg-white p-2 text-xs text-gray-800 shadow-lg transition-opacity ${
                       isTextPopoverOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                     }`}
                   >
@@ -1207,6 +1255,15 @@ export default function InsightsChart({
           displayValue,
           Array.isArray(payloadValue) ? payloadValue : displayValue,
         );
+        if (series.type === "single_choice") {
+          const choiceScale = buildChoiceScale(series.choiceSteps ?? defaultChoiceSteps);
+          const numericChoice = mapChoiceToValue(displayValue, choiceScale);
+          const nextPoints =
+            numericChoice === null
+              ? s.points.filter((point) => point.date !== modalState.date)
+              : upsertPoint(s.points, modalState.date, numericChoice);
+          return { ...s, textPoints: updatedTextPoints, points: nextPoints };
+        }
         return { ...s, textPoints: updatedTextPoints };
       }),
     );
@@ -1325,6 +1382,10 @@ export default function InsightsChart({
             const recentNumeric = daily.slice(-7);
             const isTextType =
               series.type === "text" || series.type === "single_choice" || series.type === "multi_choice";
+            const choiceScale =
+              series.type === "single_choice"
+                ? buildChoiceScale(series.choiceSteps ?? defaultChoiceSteps)
+                : null;
             const hasRecent = isTextType ? recentText.length > 0 : recentNumeric.length > 0;
             const formatValue = (value: number) => {
               if (series.type === "boolean") return value >= 1 ? "Yes" : "No";
@@ -1332,6 +1393,11 @@ export default function InsightsChart({
             };
             const formatTextValue = (value: string) =>
               value.length > 120 ? `${value.slice(0, 117)}...` : value;
+            const getTextValueForDate = (date: string) => {
+              if (!textPoints.length) return null;
+              const match = textPoints.find((point) => point.date === date);
+              return match ? (match.rawValue ?? match.value) : null;
+            };
             const countValue =
               isTextType
                 ? textPoints.length
@@ -1392,9 +1458,9 @@ export default function InsightsChart({
                 <>
                 {seriesDisplayOption === "graph" && (
                   <>
-                    {isTextType ? (
+                    {series.type === "text" || series.type === "multi_choice" ? (
                       <p className="mt-3 text-sm text-gray-600">
-                        Graph view isn&apos;t available for text or choice answers. Use list, grid, or count instead.
+                        Graph view isn&apos;t available for text or multi-choice answers. Use list, grid, or count instead.
                       </p>
                     ) : series.type === "number" ? (
                       <NumberBarChart
@@ -1411,30 +1477,54 @@ export default function InsightsChart({
                         palette={seriesPalette}
                         isBrush={isBrush}
                         isSolid={isSolid}
-                        onSelectDay={(date, value, isFuture) => handleSelectDay(series, date, value, isFuture)}
+                        onSelectDay={(date, value, isFuture) =>
+                          handleSelectDay(
+                            series,
+                            date,
+                            value,
+                            isFuture,
+                            series.type === "single_choice" ? getTextValueForDate(date) : undefined,
+                          )
+                        }
                         options={(() => {
                           const baseLineOptions = buildLineOptions(seriesPalette);
-                          const yMinBase = series.type === "boolean" ? 0 : undefined;
-                          const yMaxBase = series.type === "boolean" ? 1 : undefined;
+                          const choiceMin = choiceScale?.min;
+                          const choiceMax = choiceScale?.max;
+                          const yMinBase =
+                            series.type === "boolean"
+                              ? 0
+                              : series.type === "single_choice"
+                                ? choiceMin
+                                : undefined;
+                          const yMaxBase =
+                            series.type === "boolean"
+                              ? 1
+                              : series.type === "single_choice"
+                                ? choiceMax
+                                : undefined;
                           const verticalPadding = 0;
                           const yMin =
                             series.type === "boolean"
                               ? -0.1
-                              : yMinBase !== undefined
-                                ? yMinBase - verticalPadding
-                                : undefined;
+                              : series.type === "single_choice"
+                                ? (choiceMin ?? 0) - 0.4
+                                : yMinBase !== undefined
+                                  ? yMinBase - verticalPadding
+                                  : undefined;
                           const yMax =
                             series.type === "boolean"
                               ? 1.1
-                              : yMaxBase !== undefined
-                                ? yMaxBase + verticalPadding
+                              : series.type === "single_choice"
+                                ? (choiceMax ?? 1) + 0.4
                                 : undefined;
                           const baseStepSize =
                             (baseLineOptions.scales?.y as LinearScaleOptions | undefined)?.ticks?.stepSize;
                           const stepSize =
                             series.type === "boolean" && yMinBase !== undefined && yMaxBase !== undefined
                               ? Math.max(1, Math.round((yMaxBase - yMinBase) / 4))
-                              : baseStepSize;
+                              : series.type === "single_choice" && choiceScale && !choiceScale.isNumeric
+                                ? 1
+                                : baseStepSize;
                           const tickCallback =
                             series.type === "boolean"
                               ? (value: string | number) => {
@@ -1443,11 +1533,32 @@ export default function InsightsChart({
                                   if (numeric === 0) return "No";
                                   return "";
                                 }
+                              : series.type === "single_choice" && choiceScale
+                                ? (value: string | number) => {
+                                    const numeric = typeof value === "string" ? Number(value) : value;
+                                    const label = choiceScale.labelByValue.get(numeric);
+                                    if (label) return label;
+                                    return choiceScale.isNumeric ? String(numeric) : "";
+                                  }
                               : baseLineOptions.scales?.y?.ticks?.callback;
+                          const tooltipCallbacks =
+                            series.type === "single_choice" && choiceScale
+                              ? {
+                                  callbacks: {
+                                    label: (context: { parsed: { y: number } }) => {
+                                      const label = choiceScale.labelByValue.get(context.parsed.y);
+                                      return label ?? String(context.parsed.y);
+                                    },
+                                  },
+                                }
+                              : {};
 
                           return {
                             ...baseLineOptions,
-                            plugins: { ...(baseLineOptions.plugins || {}) },
+                            plugins: { ...(baseLineOptions.plugins || {}), tooltip: {
+                              ...(baseLineOptions.plugins?.tooltip || {}),
+                              ...tooltipCallbacks,
+                            } },
                             elements: { ...(baseLineOptions.elements || {}) },
                             scales: {
                               ...baseLineOptions.scales,
