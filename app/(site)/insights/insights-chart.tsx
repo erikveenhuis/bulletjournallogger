@@ -15,7 +15,17 @@ import {
   type LinearScaleOptions,
   type TooltipItem,
 } from "chart.js";
-import { addDays, format, parseISO, startOfWeek, subWeeks } from "date-fns";
+import {
+  addDays,
+  endOfMonth,
+  endOfYear,
+  format,
+  parseISO,
+  startOfMonth,
+  startOfWeek,
+  startOfYear,
+  subWeeks,
+} from "date-fns";
 import { formatDateValue, normalizeDateFormat } from "@/lib/date-format";
 import { type ChartPalette, type ChartStyle, type DateFormat, type DisplayOption } from "@/lib/types";
 import { defaultThemeDefaults } from "@/lib/theme-constants";
@@ -1455,10 +1465,29 @@ export default function InsightsChart({
               return match ? (match.rawValue ?? match.value) : null;
             };
             const choiceSteps = series.choiceSteps ?? defaultChoiceSteps;
+            const today = new Date();
+            const monthStart = startOfMonth(today);
+            const monthEnd = endOfMonth(today);
+            const monthLabel = format(today, "LLLL");
+            const yearStart = startOfYear(today);
+            const yearEnd = endOfYear(today);
+            const yearLabel = format(today, "yyyy");
+            const isInCurrentMonth = (date: string) => {
+              const parsed = parseISO(date);
+              return parsed >= monthStart && parsed <= monthEnd;
+            };
+            const isInCurrentYear = (date: string) => {
+              const parsed = parseISO(date);
+              return parsed >= yearStart && parsed <= yearEnd;
+            };
+            const monthlyTextPoints = textPoints.filter((point) => isInCurrentMonth(point.date));
+            const monthlyDaily = daily.filter((item) => isInCurrentMonth(item.date));
+            const yearlyTextPoints = textPoints.filter((point) => isInCurrentYear(point.date));
+            const yearlyDaily = daily.filter((item) => isInCurrentYear(item.date));
             const choiceCounts = (() => {
               if (series.type !== "single_choice" && series.type !== "multi_choice") return null;
               const counts = new Map<string, number>(choiceSteps.map((step) => [step, 0]));
-              textPoints.forEach((point) => {
+              monthlyTextPoints.forEach((point) => {
                 if (series.type === "single_choice") {
                   const raw = typeof point.rawValue === "string" ? point.rawValue : point.value;
                   const key = raw?.trim();
@@ -1487,11 +1516,28 @@ export default function InsightsChart({
             })();
             const countValue =
               isTextType
-                ? textPoints.length
+                ? monthlyTextPoints.length
                 : series.type === "boolean"
-                  ? daily.reduce((sum, item) => sum + (item.value >= 1 ? 1 : 0), 0)
-                  : daily.length;
-            const latestText = textPoints.length > 0 ? textPoints[textPoints.length - 1]?.value : null;
+                  ? monthlyDaily.reduce((sum, item) => sum + (item.value >= 1 ? 1 : 0), 0)
+                  : monthlyDaily.length;
+            const yearCountValue =
+              isTextType
+                ? yearlyTextPoints.length
+                : series.type === "boolean"
+                  ? yearlyDaily.reduce((sum, item) => sum + (item.value >= 1 ? 1 : 0), 0)
+                  : yearlyDaily.length;
+            const monthlyTotal =
+              series.type === "number" ? monthlyDaily.reduce((sum, item) => sum + item.value, 0) : null;
+            const yearlyTotal =
+              series.type === "number" ? yearlyDaily.reduce((sum, item) => sum + item.value, 0) : null;
+            const latestText =
+              monthlyTextPoints.length > 0
+                ? monthlyTextPoints[monthlyTextPoints.length - 1]?.value
+                : textPoints.length > 0
+                  ? textPoints[textPoints.length - 1]?.value
+                  : null;
+            const formatNumberWithUnit = (value: number) =>
+              series.unit ? `${formatValue(value)} ${series.unit}` : formatValue(value);
             const overrideDisplay = series.templateId
               ? normalizeDisplayOption(displayOverrides[series.templateId])
               : null;
@@ -1519,7 +1565,7 @@ export default function InsightsChart({
                     </label>
                     <select
                       id={`display-${series.id}`}
-                      className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-800 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                      className="min-w-[104px] rounded-md border border-gray-200 bg-white px-2 py-1 pr-12 text-xs font-medium text-gray-800 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                       value={seriesDisplayOption}
                       onChange={(event) => updateDisplayOption(series, event.target.value as DisplayOption)}
                       disabled={
@@ -1766,7 +1812,12 @@ export default function InsightsChart({
                           </div>
                         ))}
                         <p className="pt-1 text-[11px] text-[var(--bujo-subtle)]">
-                          {textPoints.length} {textPoints.length === 1 ? "entry" : "entries"}
+                          {monthlyTextPoints.length} {monthlyTextPoints.length === 1 ? "entry" : "entries"}{" "}
+                          {`in ${monthLabel}`}
+                        </p>
+                        <p className="text-[11px] text-[var(--bujo-subtle)]">
+                          {yearlyTextPoints.length} {yearlyTextPoints.length === 1 ? "entry" : "entries"}{" "}
+                          {`in ${yearLabel}`}
                         </p>
                       </div>
                     ) : isTextType ? (
@@ -1776,15 +1827,43 @@ export default function InsightsChart({
                         </p>
                         <p className="text-xs text-[var(--bujo-subtle)]">Latest entry</p>
                         <p className="mt-1 text-[11px] text-[var(--bujo-subtle)]">
-                          {countValue} {countValue === 1 ? "entry" : "entries"}
+                          {countValue} {countValue === 1 ? "entry" : "entries"} {`in ${monthLabel}`}
+                        </p>
+                        <p className="text-[11px] text-[var(--bujo-subtle)]">
+                          {yearCountValue} {yearCountValue === 1 ? "entry" : "entries"} {`in ${yearLabel}`}
                         </p>
                       </div>
                     ) : (
                       <div className="text-center">
-                        <p className="text-3xl font-semibold text-[var(--bujo-ink)]">{countValue}</p>
-                        <p className="text-xs text-[var(--bujo-subtle)]">
-                          {series.type === "boolean" ? "Yes days" : "Entries"}
-                        </p>
+                        {series.type === "number" ? (
+                          <>
+                            <p className="text-3xl font-semibold text-[var(--bujo-ink)]">
+                              {formatNumberWithUnit(monthlyTotal ?? 0)}
+                            </p>
+                            <p className="text-xs text-[var(--bujo-subtle)]">{`Total in ${monthLabel}`}</p>
+                            <p className="mt-1 text-xl font-semibold text-[var(--bujo-ink)]">
+                              {formatNumberWithUnit(yearlyTotal ?? 0)}
+                            </p>
+                            <p className="text-[11px] text-[var(--bujo-subtle)]">{`Total in ${yearLabel}`}</p>
+                            <p className="mt-1 text-[11px] text-[var(--bujo-subtle)]">
+                              {countValue} {countValue === 1 ? "entry" : "entries"} {`in ${monthLabel}`}
+                            </p>
+                            <p className="text-[11px] text-[var(--bujo-subtle)]">
+                              {yearCountValue} {yearCountValue === 1 ? "entry" : "entries"} {`in ${yearLabel}`}
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-3xl font-semibold text-[var(--bujo-ink)]">{countValue}</p>
+                            <p className="text-xs text-[var(--bujo-subtle)]">
+                              {series.type === "boolean" ? `Yes days in ${monthLabel}` : `Entries in ${monthLabel}`}
+                            </p>
+                            <p className="mt-1 text-xl font-semibold text-[var(--bujo-ink)]">{yearCountValue}</p>
+                            <p className="text-[11px] text-[var(--bujo-subtle)]">
+                              {series.type === "boolean" ? `Yes days in ${yearLabel}` : `Entries in ${yearLabel}`}
+                            </p>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
