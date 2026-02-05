@@ -194,7 +194,8 @@ export default function ProfileForm({
     <section className="bujo-card bujo-torn">
       <h2 className="text-xl font-semibold text-gray-900">Reminders</h2>
       <p className="text-sm text-gray-700">
-        Pick your timezone and reminder time. Enable push to receive daily notifications.
+        Pick your timezone and reminder time. Push reminders are enabled per device
+        and browser, so toggling this only affects the device you are on now.
       </p>
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <div className="space-y-1">
@@ -240,6 +241,9 @@ export default function ProfileForm({
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-800">Push reminders</label>
+          <p className="text-xs text-gray-600">
+            This toggle controls notifications for this device only.
+          </p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
