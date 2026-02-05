@@ -7,14 +7,16 @@ export default async function Home() {
   return (
     <div className="bujo-card bujo-torn grid gap-10">
       <div className="flex flex-col gap-4">
-        <p className="bujo-section-title">Bullet Journal Logger</p>
+        <h1 className="text-4xl font-semibold tracking-tight text-gray-900 sm:text-5xl">
+          Bullet Journal Logger
+        </h1>
         <div className="flex flex-col gap-4">
           <span className="w-fit rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-700">
             Daily check-in, polished export
           </span>
-          <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">
+          <h2 className="text-3xl font-bold text-gray-900 sm:text-4xl">
             Keep your paper journal vibrant without the daily bookkeeping.
-          </h1>
+          </h2>
           <p className="max-w-3xl text-base text-gray-800 sm:text-lg">
             Answer a short set of questions, every day, in under two minutes. We turn your
             insights into a clean export so your bullet journal stays intentional and
