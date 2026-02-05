@@ -1418,6 +1418,37 @@ export default function InsightsChart({
               const match = textPoints.find((point) => point.date === date);
               return match ? (match.rawValue ?? match.value) : null;
             };
+            const choiceSteps = series.choiceSteps ?? defaultChoiceSteps;
+            const choiceCounts = (() => {
+              if (series.type !== "single_choice" && series.type !== "multi_choice") return null;
+              const counts = new Map<string, number>(choiceSteps.map((step) => [step, 0]));
+              textPoints.forEach((point) => {
+                if (series.type === "single_choice") {
+                  const raw = typeof point.rawValue === "string" ? point.rawValue : point.value;
+                  const key = raw?.trim();
+                  if (key && counts.has(key)) {
+                    counts.set(key, (counts.get(key) ?? 0) + 1);
+                  }
+                  return;
+                }
+                const rawValues = Array.isArray(point.rawValue)
+                  ? point.rawValue
+                  : typeof point.rawValue === "string"
+                    ? point.rawValue.split(",")
+                    : typeof point.value === "string"
+                      ? point.value.split(",")
+                      : [];
+                rawValues
+                  .map((entry) => entry.trim())
+                  .filter((entry) => entry.length > 0)
+                  .forEach((entry) => {
+                    if (counts.has(entry)) {
+                      counts.set(entry, (counts.get(entry) ?? 0) + 1);
+                    }
+                  });
+              });
+              return choiceSteps.map((step) => ({ step, count: counts.get(step) ?? 0 }));
+            })();
             const countValue =
               isTextType
                 ? textPoints.length
@@ -1680,7 +1711,24 @@ export default function InsightsChart({
 
                 {seriesDisplayOption === "count" && (
                   <div className="mt-3 flex items-center justify-center rounded-md border border-[var(--bujo-border)] bg-[var(--bujo-paper)] py-6">
-                    {isTextType ? (
+                    {choiceCounts ? (
+                      <div className="w-full max-w-sm space-y-2 px-4 text-sm text-gray-800">
+                        {choiceCounts.map((item) => (
+                          <div key={item.step} className="flex items-center justify-between">
+                            <span
+                              className="bujo-emoji-value"
+                              data-emoji-only={isEmojiOnly(item.step) ? "true" : "false"}
+                            >
+                              {item.step}
+                            </span>
+                            <span className="font-semibold tabular-nums">{item.count}</span>
+                          </div>
+                        ))}
+                        <p className="pt-1 text-[11px] text-[var(--bujo-subtle)]">
+                          {textPoints.length} {textPoints.length === 1 ? "entry" : "entries"}
+                        </p>
+                      </div>
+                    ) : isTextType ? (
                       <div className="text-center">
                         <p className="text-sm font-semibold text-[var(--bujo-ink)]">
                           {latestText ? formatTextValue(latestText) : "—"}
