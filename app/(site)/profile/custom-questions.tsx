@@ -240,28 +240,6 @@ export default function CustomQuestions({
           </select>
         </div>
         <div className="space-y-2">
-          {isChoiceType && (
-            <StepListEditor
-              steps={steps}
-              onChange={setSteps}
-              label="Choice options"
-              helperText="Add at least two options. Drag to reorder."
-            />
-          )}
-          {isNumberType && (
-            <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
-              <span className="font-medium">Unit</span>
-              <input
-                placeholder="e.g. cups, steps"
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                className="bujo-input"
-              />
-              <span className="text-xs text-[var(--bujo-subtle)]">
-                Optional label used in Insights.
-              </span>
-            </label>
-          )}
           <div className="flex flex-wrap gap-2">
             <button
               onClick={submit}
@@ -287,6 +265,28 @@ export default function CustomQuestions({
             </p>
           )}
           {message && <p className="bujo-message text-sm">{message}</p>}
+          {isChoiceType && (
+            <StepListEditor
+              steps={steps}
+              onChange={setSteps}
+              label="Choice options"
+              helperText="Add at least two options. Drag to reorder."
+            />
+          )}
+          {isNumberType && (
+            <label className="space-y-1 text-sm text-[var(--bujo-ink)]">
+              <span className="font-medium">Unit</span>
+              <input
+                placeholder="e.g. cups, steps"
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                className="bujo-input"
+              />
+              <span className="text-xs text-[var(--bujo-subtle)]">
+                Optional label used in Insights.
+              </span>
+            </label>
+          )}
         </div>
       </div>
 

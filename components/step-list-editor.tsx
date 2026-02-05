@@ -47,9 +47,6 @@ export default function StepListEditor({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <label className="text-sm font-medium text-[var(--bujo-ink)]">{label}</label>
-        <button type="button" onClick={addStep} className="bujo-btn-secondary text-xs">
-          Add option
-        </button>
       </div>
       <p className="text-xs text-[var(--bujo-subtle)]">{helperText}</p>
       <div className="space-y-2">
@@ -91,6 +88,11 @@ export default function StepListEditor({
             </button>
           </div>
         ))}
+      </div>
+      <div className="flex items-center justify-between">
+        <button type="button" onClick={addStep} className="bujo-btn-secondary text-xs">
+          Add option
+        </button>
       </div>
       {steps.length < minItems && (
         <p className="text-xs text-red-600">Add at least {minItems} options.</p>
