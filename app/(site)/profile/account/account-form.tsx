@@ -29,8 +29,15 @@ export default function AccountForm({ accountTier, hasStripeCheckout = false, is
   const searchParams = useSearchParams();
 
   useEffect(() => {
+    // Keep local selection in sync with latest server tier
+    setCurrentTier(accountTier);
+    setPendingTier(accountTier);
+  }, [accountTier]);
+
+  useEffect(() => {
     if (searchParams.get("upgraded") === "1") {
       setMessage("Subscription active. Your tier has been updated.");
+      router.refresh();
       router.replace("/profile/account", { scroll: false });
     }
   }, [searchParams, router]);
@@ -74,10 +81,32 @@ export default function AccountForm({ accountTier, hasStripeCheckout = false, is
     }
   };
 
+  const changeTierWithStripe = async (nextTier: number) => {
+    setSaving(true);
+    setMessage(null);
+    const res = await fetch("/api/stripe/change-tier", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tier: nextTier }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setSaving(false);
+    if (!res.ok) {
+      setMessage(data.error || "Unable to change subscription tier");
+      return;
+    }
+    setCurrentTier(nextTier);
+    setPendingTier(nextTier);
+    setMessage("Subscription tier updated");
+    router.refresh();
+  };
+
   const currentTierMeta = tiers.find((tier) => tier.id === currentTier);
   const pendingTierMeta = tiers.find((tier) => tier.id === pendingTier);
   const isUpgradeFlow = pendingTier > currentTier && hasStripeCheckout && !isAdmin;
   const isDowngradeFlow = pendingTier < currentTier;
+  const shouldUseStripePlanChange = hasStripeCheckout && !isAdmin && currentTier > 0;
+  const shouldUseCheckoutUpgrade = isUpgradeFlow && currentTier === 0;
   const hasSelectionChange = pendingTier !== currentTier;
 
   return (
@@ -97,7 +126,7 @@ export default function AccountForm({ accountTier, hasStripeCheckout = false, is
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {isUpgradeFlow ? (
+          {isUpgradeFlow && shouldUseCheckoutUpgrade ? (
             <button
               type="button"
               onClick={() => startUpgrade(pendingTier)}
@@ -113,13 +142,23 @@ export default function AccountForm({ accountTier, hasStripeCheckout = false, is
                 if (isDowngradeFlow) {
                   setConfirmDowngrade(true);
                 } else {
-                  updateTier(pendingTier);
+                  if (shouldUseStripePlanChange && hasSelectionChange) {
+                    void changeTierWithStripe(pendingTier);
+                  } else {
+                    void updateTier(pendingTier);
+                  }
                 }
               }}
               className={isDowngradeFlow ? "bujo-btn-danger text-sm" : "bujo-btn text-sm"}
               disabled={saving || !hasSelectionChange}
             >
-              {saving ? "Saving..." : isDowngradeFlow ? "Downgrade" : "Update tier"}
+              {saving
+                ? "Saving..."
+                : isDowngradeFlow
+                  ? "Downgrade"
+                  : shouldUseStripePlanChange
+                    ? "Change plan"
+                    : "Update tier"}
             </button>
           )}
         </div>
@@ -177,7 +216,11 @@ export default function AccountForm({ accountTier, hasStripeCheckout = false, is
         confirmTone="danger"
         onConfirm={() => {
           setConfirmDowngrade(false);
-          updateTier(pendingTier);
+          if (shouldUseStripePlanChange) {
+            void changeTierWithStripe(pendingTier);
+          } else {
+            void updateTier(pendingTier);
+          }
         }}
         onCancel={() => setConfirmDowngrade(false)}
       />
