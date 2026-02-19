@@ -70,6 +70,15 @@ VAPID_PRIVATE_KEY=...
 
 # Cron protection
 CRON_SECRET=...
+
+# Stripe (optional – for paid tier upgrades)
+STRIPE_SECRET_KEY=sk_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+STRIPE_PRICE_ID_TIER_1=price_...
+STRIPE_PRICE_ID_TIER_2=price_...
+STRIPE_PRICE_ID_TIER_3=price_...
+STRIPE_PRICE_ID_TIER_4=price_...
 ```
 
 Notes:
@@ -138,6 +147,16 @@ Admins can:
 - Impersonate users for support and debugging.
 
 Admin actions are protected by `profiles.is_admin`.
+
+### Stripe subscriptions (optional)
+
+When Stripe is configured, users can upgrade account tiers (1–4) via paid subscription:
+
+- **Checkout**: Profile → Account. Selecting a higher tier shows “Upgrade with subscription”; it creates a Stripe Checkout session and redirects to Stripe’s hosted payment page.
+- **Webhook**: `POST /api/stripe/webhook` handles `customer.subscription.created`, `updated`, and `deleted` to set `profiles.account_tier` and store `stripe_customer_id` / `stripe_subscription_id`. Configure this URL in the [Stripe Dashboard → Webhooks](https://dashboard.stripe.com/webhooks) and set `STRIPE_WEBHOOK_SECRET`.
+- **Prices**: In Stripe, create a recurring Price for each tier (1–4) and set `STRIPE_PRICE_ID_TIER_1` … `STRIPE_PRICE_ID_TIER_4`. Tier 0 remains free; upgrades above current tier are only allowed through checkout. Downgrades (or same tier) still use the “Update tier” / “Downgrade” flow on the account page.
+
+If Stripe env vars are not set, tier changes work as before (no payment).
 
 ## Project Structure (High-Level)
 

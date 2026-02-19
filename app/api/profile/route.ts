@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getEffectiveUser, getEffectiveSupabaseClient } from "@/lib/auth";
+import { getEffectiveUser, getEffectiveSupabaseClient, getEffectiveAdminStatus } from "@/lib/auth";
+import { isStripeConfigured } from "@/lib/stripe";
 
 const fiveMinutePattern = /^([01]\d|2[0-3]):([0-5]\d)(?::\d{2})?$/;
 const hexColorPattern = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -103,6 +104,25 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "account_tier must be an integer between 0 and 4." }, { status: 400 });
     }
     normalizedTier = account_tier;
+
+    // When Stripe is enabled, tier upgrades must go through subscription checkout
+    if (isStripeConfigured() && normalizedTier !== undefined) {
+      const isAdmin = await getEffectiveAdminStatus();
+      if (!isAdmin) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("account_tier")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const currentTier = typeof profile?.account_tier === "number" ? profile.account_tier : 0;
+        if (normalizedTier > currentTier) {
+          return NextResponse.json(
+            { error: "Upgrade via the subscription flow on this page." },
+            { status: 400 },
+          );
+        }
+      }
+    }
   }
 
   const normalizedPalette = normalizePalette(chart_palette);

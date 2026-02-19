@@ -1,4 +1,6 @@
 import { getEffectiveUser, getEffectiveSupabaseClient, getEffectiveAdminStatus, isImpersonating } from "@/lib/auth";
+import { isCheckoutEnabled } from "@/lib/stripe-config";
+import { getTierPrices } from "@/lib/stripe-prices";
 import AccountForm from "./account-form";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +26,8 @@ export default async function AccountPage() {
   const accountTier = profile?.account_tier ?? 0;
   const isCurrentlyImpersonating = await isImpersonating();
   const isAdmin = profile?.is_admin || (!isCurrentlyImpersonating && (await getEffectiveAdminStatus()));
+  const hasStripeCheckout = isCheckoutEnabled();
+  const tierPrices = hasStripeCheckout ? await getTierPrices() : {};
 
   return (
     <div className="space-y-8">
@@ -39,7 +43,7 @@ export default async function AccountPage() {
         </div>
       </div>
 
-      <AccountForm accountTier={accountTier} />
+      <AccountForm accountTier={accountTier} hasStripeCheckout={hasStripeCheckout} isAdmin={isAdmin} tierPrices={tierPrices} />
     </div>
   );
 }
